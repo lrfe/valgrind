@@ -134,6 +134,22 @@ OR1KInstr* OR1KInstr_Ext ( OR1KExtOp op, HReg dst, HReg src ) {
    i->OR1Kin.Ext.op=op; i->OR1Kin.Ext.dst=dst; i->OR1Kin.Ext.src=src;
    return i;
 }
+OR1KInstr* OR1KInstr_XDirect ( UInt dstGA, Int pcOff, OR1KCondCode cond ) {
+   OR1KInstr* i = mk(OR1Kin_XDirect);
+   i->OR1Kin.XDirect.dstGA=dstGA; i->OR1Kin.XDirect.pcOff=pcOff; i->OR1Kin.XDirect.cond=cond;
+   return i;
+}
+OR1KInstr* OR1KInstr_XIndir ( HReg dstGA, Int pcOff, OR1KCondCode cond ) {
+   OR1KInstr* i = mk(OR1Kin_XIndir);
+   i->OR1Kin.XIndir.dstGA=dstGA; i->OR1Kin.XIndir.pcOff=pcOff; i->OR1Kin.XIndir.cond=cond;
+   return i;
+}
+OR1KInstr* OR1KInstr_XAssisted ( HReg dstGA, Int pcOff, OR1KCondCode cond, IRJumpKind jk ) {
+   OR1KInstr* i = mk(OR1Kin_XAssisted);
+   i->OR1Kin.XAssisted.dstGA=dstGA; i->OR1Kin.XAssisted.pcOff=pcOff;
+   i->OR1Kin.XAssisted.cond=cond; i->OR1Kin.XAssisted.jk=jk;
+   return i;
+}
 
 /*--- pretty-print ---*/
 
@@ -176,6 +192,19 @@ void ppOR1KInstr ( const OR1KInstr* i ) {
          vex_printf("ext(0x%03x) r%u,r%u", i->OR1Kin.Ext.op,
                     gpr(i->OR1Kin.Ext.dst), gpr(i->OR1Kin.Ext.src));
          return;
+      case OR1Kin_XDirect:
+         vex_printf("xdirect(%u) 0x%x -> %d(gsp)", i->OR1Kin.XDirect.cond,
+                    i->OR1Kin.XDirect.dstGA, i->OR1Kin.XDirect.pcOff);
+         return;
+      case OR1Kin_XIndir:
+         vex_printf("xindir(%u) r%u -> %d(gsp)", i->OR1Kin.XIndir.cond,
+                    gpr(i->OR1Kin.XIndir.dstGA), i->OR1Kin.XIndir.pcOff);
+         return;
+      case OR1Kin_XAssisted:
+         vex_printf("xassisted(%u) r%u -> %d(gsp) jk=%d", i->OR1Kin.XAssisted.cond,
+                    gpr(i->OR1Kin.XAssisted.dstGA), i->OR1Kin.XAssisted.pcOff,
+                    (Int)i->OR1Kin.XAssisted.jk);
+         return;
       default:
          vpanic("ppOR1KInstr");
    }
@@ -183,49 +212,108 @@ void ppOR1KInstr ( const OR1KInstr* i ) {
 
 /*--- emit ---*/
 
+static UChar* emitW ( UChar* q, UInt w ) {
+   q[0]=(UChar)(w>>24); q[1]=(UChar)(w>>16); q[2]=(UChar)(w>>8); q[3]=(UChar)w;
+   return q+4;
+}
+/* materialize a 32-bit constant into reg (movhi+ori, always 2 words). */
+static UChar* emitLoad32 ( UChar* q, UInt reg, UInt val ) {
+   q = emitW(q, or1k_enc_movhi(reg, val >> 16));
+   q = emitW(q, or1k_enc_ri(0x2a, reg, reg, val & 0xFFFF));
+   return q;
+}
+
+/* dispatcher-continuation addresses are wired in at M2; 0 for now. */
+#define OR1K_DISP 0
+/* branch selector to skip the exit block when the condition fails. */
+#define SKIP_OPC(c) ((c)==OR1Kcc_F ? 0x03 : 0x04)   /* F: l.bnf ; NF: l.bf */
+
 Int emit_OR1KInstr ( UChar* buf, Int nbuf, const OR1KInstr* i )
 {
-   UInt w;
-   vassert(nbuf >= 4);
+   UChar* p = buf;
+   vassert(nbuf >= 64);
    switch (i->tag) {
       case OR1Kin_Alu:
-         w = or1k_enc_rrr(i->OR1Kin.Alu.op, gpr(i->OR1Kin.Alu.dst),
-                          gpr(i->OR1Kin.Alu.srcL), gpr(i->OR1Kin.Alu.srcR));
+         p = emitW(p, or1k_enc_rrr(i->OR1Kin.Alu.op, gpr(i->OR1Kin.Alu.dst),
+                                   gpr(i->OR1Kin.Alu.srcL), gpr(i->OR1Kin.Alu.srcR)));
          break;
       case OR1Kin_AluI:
-         w = or1k_enc_ri(i->OR1Kin.AluI.opc, gpr(i->OR1Kin.AluI.dst),
-                         gpr(i->OR1Kin.AluI.src), i->OR1Kin.AluI.imm);
+         p = emitW(p, or1k_enc_ri(i->OR1Kin.AluI.opc, gpr(i->OR1Kin.AluI.dst),
+                                  gpr(i->OR1Kin.AluI.src), i->OR1Kin.AluI.imm));
          break;
       case OR1Kin_ShiftI:
-         w = or1k_enc_shifti(i->OR1Kin.ShiftI.type, gpr(i->OR1Kin.ShiftI.dst),
-                             gpr(i->OR1Kin.ShiftI.src), i->OR1Kin.ShiftI.amt);
+         p = emitW(p, or1k_enc_shifti(i->OR1Kin.ShiftI.type, gpr(i->OR1Kin.ShiftI.dst),
+                                      gpr(i->OR1Kin.ShiftI.src), i->OR1Kin.ShiftI.amt));
          break;
       case OR1Kin_MovHi:
-         w = or1k_enc_movhi(gpr(i->OR1Kin.MovHi.dst), i->OR1Kin.MovHi.imm);
+         p = emitW(p, or1k_enc_movhi(gpr(i->OR1Kin.MovHi.dst), i->OR1Kin.MovHi.imm));
          break;
       case OR1Kin_Load:
-         w = or1k_enc_load(i->OR1Kin.Load.opc, gpr(i->OR1Kin.Load.dst),
-                           gpr(i->OR1Kin.Load.base), (UShort)i->OR1Kin.Load.disp);
+         p = emitW(p, or1k_enc_load(i->OR1Kin.Load.opc, gpr(i->OR1Kin.Load.dst),
+                                    gpr(i->OR1Kin.Load.base), (UShort)i->OR1Kin.Load.disp));
          break;
       case OR1Kin_Store:
-         w = or1k_enc_store(i->OR1Kin.Store.opc, gpr(i->OR1Kin.Store.base),
-                            gpr(i->OR1Kin.Store.src), (UShort)i->OR1Kin.Store.disp);
+         p = emitW(p, or1k_enc_store(i->OR1Kin.Store.opc, gpr(i->OR1Kin.Store.base),
+                                     gpr(i->OR1Kin.Store.src), (UShort)i->OR1Kin.Store.disp));
          break;
       case OR1Kin_Cmp:
-         w = or1k_enc_sf(i->OR1Kin.Cmp.code, gpr(i->OR1Kin.Cmp.srcL), gpr(i->OR1Kin.Cmp.srcR));
+         p = emitW(p, or1k_enc_sf(i->OR1Kin.Cmp.code, gpr(i->OR1Kin.Cmp.srcL),
+                                  gpr(i->OR1Kin.Cmp.srcR)));
          break;
       case OR1Kin_CmpI:
-         w = or1k_enc_sfi(i->OR1Kin.CmpI.code, gpr(i->OR1Kin.CmpI.src), i->OR1Kin.CmpI.imm);
+         p = emitW(p, or1k_enc_sfi(i->OR1Kin.CmpI.code, gpr(i->OR1Kin.CmpI.src),
+                                   i->OR1Kin.CmpI.imm));
          break;
       case OR1Kin_Ext:
-         w = or1k_enc_rrr(i->OR1Kin.Ext.op, gpr(i->OR1Kin.Ext.dst), gpr(i->OR1Kin.Ext.src), 0);
+         p = emitW(p, or1k_enc_rrr(i->OR1Kin.Ext.op, gpr(i->OR1Kin.Ext.dst),
+                                   gpr(i->OR1Kin.Ext.src), 0));
          break;
+
+      case OR1Kin_XDirect: {
+         OR1KCondCode c = i->OR1Kin.XDirect.cond;
+         if (c != OR1Kcc_AL) {                 /* skip exit block (9 words) if !cond */
+            p = emitW(p, or1k_enc_branch(SKIP_OPC(c), 9));
+            p = emitW(p, or1k_enc_nop(0));
+         }
+         p = emitLoad32(p, 9, i->OR1Kin.XDirect.dstGA);
+         p = emitW(p, or1k_enc_store(0x35, 30, 9, (UShort)i->OR1Kin.XDirect.pcOff));
+         p = emitLoad32(p, 9, OR1K_DISP);
+         p = emitW(p, or1k_enc_jr(9));
+         p = emitW(p, or1k_enc_nop(0));
+         break;
+      }
+      case OR1Kin_XIndir: {
+         OR1KCondCode c = i->OR1Kin.XIndir.cond;
+         if (c != OR1Kcc_AL) {                 /* skip (7 words) */
+            p = emitW(p, or1k_enc_branch(SKIP_OPC(c), 7));
+            p = emitW(p, or1k_enc_nop(0));
+         }
+         p = emitW(p, or1k_enc_store(0x35, 30, gpr(i->OR1Kin.XIndir.dstGA),
+                                     (UShort)i->OR1Kin.XIndir.pcOff));
+         p = emitLoad32(p, 9, OR1K_DISP);
+         p = emitW(p, or1k_enc_jr(9));
+         p = emitW(p, or1k_enc_nop(0));
+         break;
+      }
+      case OR1Kin_XAssisted: {
+         OR1KCondCode c = i->OR1Kin.XAssisted.cond;
+         if (c != OR1Kcc_AL) {                 /* skip (9 words) */
+            p = emitW(p, or1k_enc_branch(SKIP_OPC(c), 9));
+            p = emitW(p, or1k_enc_nop(0));
+         }
+         p = emitW(p, or1k_enc_store(0x35, 30, gpr(i->OR1Kin.XAssisted.dstGA),
+                                     (UShort)i->OR1Kin.XAssisted.pcOff));
+         p = emitLoad32(p, 11, (UInt)i->OR1Kin.XAssisted.jk);   /* TRC value */
+         p = emitLoad32(p, 9, OR1K_DISP);
+         p = emitW(p, or1k_enc_jr(9));
+         p = emitW(p, or1k_enc_nop(0));
+         break;
+      }
+
       default:
          vpanic("emit_OR1KInstr");
    }
-   buf[0] = (UChar)(w >> 24); buf[1] = (UChar)(w >> 16);
-   buf[2] = (UChar)(w >>  8); buf[3] = (UChar)(w);
-   return 4;
+   return (Int)(p - buf);
 }
 
 /*--- register allocator interface ---*/
@@ -247,10 +335,13 @@ const RRegUniverse* getRRegUniverse_OR1K ( void )
    ru.allocable_end[HRcInt32] = ru.size - 1;
    ru.allocable = ru.size;
 
-   /* reserved: r0 (zero), r1 (sp), r2 (fp), r30 (guest-state ptr). */
+   /* reserved: r0 (zero), r1 (sp), r2 (fp), r9 (exit scratch),
+      r10, r30 (guest-state ptr). */
    ru.regs[ru.size++] = hregOR1K_GPR(0);
    ru.regs[ru.size++] = hregOR1K_GPR(1);
    ru.regs[ru.size++] = hregOR1K_GPR(2);
+   ru.regs[ru.size++] = hregOR1K_GPR(9);
+   ru.regs[ru.size++] = hregOR1K_GPR(10);
    ru.regs[ru.size++] = hregOR1K_GPR(30);
 
    initted = True;
@@ -271,38 +362,34 @@ void getRegUsage_OR1K ( HRegUsage* u, const OR1KInstr* i, Bool mode64 )
       case OR1Kin_Alu:
          addHRegUse(u, HRmWrite, i->OR1Kin.Alu.dst);
          addHRegUse(u, HRmRead,  i->OR1Kin.Alu.srcL);
-         addHRegUse(u, HRmRead,  i->OR1Kin.Alu.srcR);
-         return;
+         addHRegUse(u, HRmRead,  i->OR1Kin.Alu.srcR); return;
       case OR1Kin_AluI:
          addHRegUse(u, HRmWrite, i->OR1Kin.AluI.dst);
-         addHRegUse(u, HRmRead,  i->OR1Kin.AluI.src);
-         return;
+         addHRegUse(u, HRmRead,  i->OR1Kin.AluI.src); return;
       case OR1Kin_ShiftI:
          addHRegUse(u, HRmWrite, i->OR1Kin.ShiftI.dst);
-         addHRegUse(u, HRmRead,  i->OR1Kin.ShiftI.src);
-         return;
+         addHRegUse(u, HRmRead,  i->OR1Kin.ShiftI.src); return;
       case OR1Kin_MovHi:
-         addHRegUse(u, HRmWrite, i->OR1Kin.MovHi.dst);
-         return;
+         addHRegUse(u, HRmWrite, i->OR1Kin.MovHi.dst); return;
       case OR1Kin_Load:
          addHRegUse(u, HRmWrite, i->OR1Kin.Load.dst);
-         addHRegUse(u, HRmRead,  i->OR1Kin.Load.base);
-         return;
+         addHRegUse(u, HRmRead,  i->OR1Kin.Load.base); return;
       case OR1Kin_Store:
          addHRegUse(u, HRmRead, i->OR1Kin.Store.base);
-         addHRegUse(u, HRmRead, i->OR1Kin.Store.src);
-         return;
+         addHRegUse(u, HRmRead, i->OR1Kin.Store.src); return;
       case OR1Kin_Cmp:
          addHRegUse(u, HRmRead, i->OR1Kin.Cmp.srcL);
-         addHRegUse(u, HRmRead, i->OR1Kin.Cmp.srcR);
-         return;
+         addHRegUse(u, HRmRead, i->OR1Kin.Cmp.srcR); return;
       case OR1Kin_CmpI:
-         addHRegUse(u, HRmRead, i->OR1Kin.CmpI.src);
-         return;
+         addHRegUse(u, HRmRead, i->OR1Kin.CmpI.src); return;
       case OR1Kin_Ext:
          addHRegUse(u, HRmWrite, i->OR1Kin.Ext.dst);
-         addHRegUse(u, HRmRead,  i->OR1Kin.Ext.src);
-         return;
+         addHRegUse(u, HRmRead,  i->OR1Kin.Ext.src); return;
+      case OR1Kin_XDirect: return;
+      case OR1Kin_XIndir:
+         addHRegUse(u, HRmRead, i->OR1Kin.XIndir.dstGA); return;
+      case OR1Kin_XAssisted:
+         addHRegUse(u, HRmRead, i->OR1Kin.XAssisted.dstGA); return;
       default:
          vpanic("getRegUsage_OR1K");
    }
@@ -332,6 +419,9 @@ void mapRegs_OR1K ( HRegRemap* m, OR1KInstr* i, Bool mode64 )
          mapReg(m, &i->OR1Kin.CmpI.src); return;
       case OR1Kin_Ext:
          mapReg(m, &i->OR1Kin.Ext.dst); mapReg(m, &i->OR1Kin.Ext.src); return;
+      case OR1Kin_XDirect: return;
+      case OR1Kin_XIndir:    mapReg(m, &i->OR1Kin.XIndir.dstGA); return;
+      case OR1Kin_XAssisted: mapReg(m, &i->OR1Kin.XAssisted.dstGA); return;
       default:
          vpanic("mapRegs_OR1K");
    }

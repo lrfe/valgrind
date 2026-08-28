@@ -66,13 +66,29 @@ extern UInt or1k_enc_sys    ( UInt k );
 
 /*--- host instructions ---*/
 
+/* universe index of GPR n: allocable r3..r8, r11..r29, r31 first, then */
+/* the reserved r0/r1/r2/r9/r10/r30. mkHReg needs this index, not n. */
+static inline UInt or1k_gpr_ix ( UInt n ) {
+   if (n >= 3 && n <= 8)   return n - 3;
+   if (n >= 11 && n <= 29) return 6 + (n - 11);
+   if (n == 31) return 25;
+   if (n == 0)  return 26;
+   if (n == 1)  return 27;
+   if (n == 2)  return 28;
+   if (n == 9)  return 29;
+   if (n == 10) return 30;
+   return 31;                                 /* r30 */
+}
 /* real GPR n as a host register. */
-static inline HReg hregOR1K_GPR ( UInt n ) { return mkHReg(False, HRcInt32, n, n); }
+static inline HReg hregOR1K_GPR ( UInt n ) {
+   return mkHReg(False, HRcInt32, n, or1k_gpr_ix(n));
+}
 
 typedef enum {
    OR1Kalu_ADD=0x000, OR1Kalu_SUB=0x002, OR1Kalu_AND=0x003,
    OR1Kalu_OR =0x004, OR1Kalu_XOR=0x005, OR1Kalu_SLL=0x008,
-   OR1Kalu_SRL=0x048, OR1Kalu_SRA=0x088, OR1Kalu_MUL=0x306
+   OR1Kalu_SRL=0x048, OR1Kalu_SRA=0x088, OR1Kalu_MUL=0x306,
+   OR1Kalu_CMOV=0x00e
 } OR1KAluOp;   /* value is the opcode 0x38 op11 field */
 
 typedef enum {
@@ -80,9 +96,13 @@ typedef enum {
    OR1Kext_EXTHZ=0x08c, OR1Kext_EXTBZ=0x0cc
 } OR1KExtOp;
 
+/* AL = unconditional; F/NF = take the transfer iff SR[F] set / clear. */
+typedef enum { OR1Kcc_AL, OR1Kcc_F, OR1Kcc_NF } OR1KCondCode;
+
 typedef enum {
    OR1Kin_Alu, OR1Kin_AluI, OR1Kin_ShiftI, OR1Kin_MovHi,
-   OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext
+   OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext,
+   OR1Kin_XDirect, OR1Kin_XIndir, OR1Kin_XAssisted
 } OR1KInstrTag;
 
 typedef struct {
@@ -97,6 +117,9 @@ typedef struct {
       struct { UInt code; HReg srcL, srcR;              } Cmp;
       struct { UInt code; HReg src; UShort imm;         } CmpI;
       struct { OR1KExtOp op; HReg dst, src;             } Ext;
+      struct { UInt dstGA; Int pcOff; OR1KCondCode cond; } XDirect;
+      struct { HReg dstGA; Int pcOff; OR1KCondCode cond; } XIndir;
+      struct { HReg dstGA; Int pcOff; OR1KCondCode cond; IRJumpKind jk; } XAssisted;
    } OR1Kin;
 } OR1KInstr;
 
@@ -109,6 +132,9 @@ extern OR1KInstr* OR1KInstr_Store  ( UInt opc, HReg base, HReg src, Short disp )
 extern OR1KInstr* OR1KInstr_Cmp    ( UInt code, HReg srcL, HReg srcR );
 extern OR1KInstr* OR1KInstr_CmpI   ( UInt code, HReg src, UShort imm );
 extern OR1KInstr* OR1KInstr_Ext    ( OR1KExtOp, HReg dst, HReg src );
+extern OR1KInstr* OR1KInstr_XDirect   ( UInt dstGA, Int pcOff, OR1KCondCode );
+extern OR1KInstr* OR1KInstr_XIndir    ( HReg dstGA, Int pcOff, OR1KCondCode );
+extern OR1KInstr* OR1KInstr_XAssisted ( HReg dstGA, Int pcOff, OR1KCondCode, IRJumpKind );
 
 extern void ppOR1KInstr ( const OR1KInstr* i );
 

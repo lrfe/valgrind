@@ -59,6 +59,7 @@ static Bool fitsS16 ( UInt c ) { Int s = (Int)c; return s >= -32768 && s <= 3276
 static Bool fitsU16 ( UInt c ) { return c <= 0xFFFF; }
 
 static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e );
+static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard );
 
 /*--- constant materialization ---*/
 
@@ -123,6 +124,14 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
          switch (op) {
             case Iop_32to8: case Iop_32to16:
                return iselIntExpr_R(env, a);          /* low bits already there */
+            case Iop_1Uto32: {
+               /* materialize the I1 into 0/1 via l.sf* + l.cmov. */
+               iselCondCode(env, a);                  /* sets SR[F] = cond */
+               HReg one = iselConst(env, 1);
+               HReg dst = newVRegI(env);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+               return dst;                            /* dst = F ? 1 : 0 */
+            }
             case Iop_8Uto32: case Iop_8Sto32:
             case Iop_16Uto32: case Iop_16Sto32: {
                if (a->tag == Iex_Load) {
@@ -209,6 +218,38 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
    vpanic("iselIntExpr_R(or1k): cannot reduce expression");
 }
 
+/*--- condition codes: emit an l.sf* setting SR[F] from an I1 guard ---*/
+
+static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
+{
+   if (guard->tag == Iex_Binop) {
+      UInt code; Bool ok = True;
+      switch (guard->Iex.Binop.op) {
+         case Iop_CmpEQ32:  code = 0;  break;
+         case Iop_CmpNE32:  code = 1;  break;
+         case Iop_CmpLT32U: code = 4;  break;
+         case Iop_CmpLE32U: code = 5;  break;
+         case Iop_CmpLT32S: code = 12; break;
+         case Iop_CmpLE32S: code = 13; break;
+         default: ok = False; code = 0; break;
+      }
+      if (ok) {
+         IRExpr* a = guard->Iex.Binop.arg1;
+         IRExpr* b = guard->Iex.Binop.arg2;
+         HReg ra = iselIntExpr_R(env, a);
+         if (b->tag == Iex_Const && b->Iex.Const.con->tag == Ico_U32
+             && fitsS16(b->Iex.Const.con->Ico.U32))
+            addInstr(env, OR1KInstr_CmpI(code, ra, (UShort)b->Iex.Const.con->Ico.U32));
+         else
+            addInstr(env, OR1KInstr_Cmp(code, ra, iselIntExpr_R(env, b)));
+         return OR1Kcc_F;
+      }
+   }
+   /* fallback: flag set iff the guard value is nonzero. */
+   addInstr(env, OR1KInstr_CmpI(1, iselIntExpr_R(env, guard), 0));
+   return OR1Kcc_F;
+}
+
 /*--- statements ---*/
 
 static void iselStmt ( ISelEnv* env, IRStmt* stmt )
@@ -228,8 +269,16 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
       case Ist_WrTmp: {
          HReg dst = lookupIRTemp(env, stmt->Ist.WrTmp.tmp);
-         HReg r   = iselIntExpr_R(env, stmt->Ist.WrTmp.data);
-         addInstr(env, (OR1KInstr*)genMove_OR1K(r, dst, False));
+         IRExpr* data = stmt->Ist.WrTmp.data;
+         if (typeOfIRExpr(env->type_env, data) == Ity_I1) {
+            /* a condition temp: materialize it as 0/1. */
+            iselCondCode(env, data);
+            HReg one = iselConst(env, 1);
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+         } else {
+            HReg r = iselIntExpr_R(env, data);
+            addInstr(env, (OR1KInstr*)genMove_OR1K(r, dst, False));
+         }
          return;
       }
 
@@ -242,9 +291,13 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          return;
       }
 
-      case Ist_Exit:
-         /* conditional branch selection: next milestone. */
-         vpanic("iselStmt(or1k): Ist_Exit not handled yet");
+      case Ist_Exit: {
+         vassert(stmt->Ist.Exit.dst->tag == Ico_U32);
+         OR1KCondCode cc = iselCondCode(env, stmt->Ist.Exit.guard);
+         addInstr(env, OR1KInstr_XDirect(stmt->Ist.Exit.dst->Ico.U32,
+                                         stmt->Ist.Exit.offsIP, cc));
+         return;
+      }
 
       default:
          ppIRStmt(stmt);
@@ -277,10 +330,21 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    for (i = 0; i < bb->stmts_used; i++)
       iselStmt(&env, bb->stmts[i]);
 
-   env.code->n_vregs = env.vreg_ctr;
+   /* block terminator: transfer to bb->next. */
+   if (bb->next->tag == Iex_Const) {
+      vassert(bb->next->Iex.Const.con->tag == Ico_U32);
+      addInstr(&env, OR1KInstr_XDirect(bb->next->Iex.Const.con->Ico.U32,
+                                       bb->offsIP, OR1Kcc_AL));
+   } else {
+      HReg r = iselIntExpr_R(&env, bb->next);
+      if (bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
+          || bb->jumpkind == Ijk_Ret)
+         addInstr(&env, OR1KInstr_XIndir(r, bb->offsIP, OR1Kcc_AL));
+      else
+         addInstr(&env, OR1KInstr_XAssisted(r, bb->offsIP, OR1Kcc_AL, bb->jumpkind));
+   }
 
-   /* the block terminator (bb->next / jumpkind) is wired once control */
-   /* flow lands; not needed for the straight-line round-trip. */
+   env.code->n_vregs = env.vreg_ctr;
    return env.code;
 }
 
