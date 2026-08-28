@@ -400,6 +400,9 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
 
       default:
          if (!dis_simple(insn)) goto decode_failure;
+         /* Every instruction's IR must end by writing the fall-through PC to
+            the guest IP, so the block can stop cleanly after any insn. */
+         putPC(mkU32(pc + 4));
          break;
    }
 
