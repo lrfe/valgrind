@@ -65,6 +65,9 @@
 #define EM_PPC64 21
 #endif
 
+#ifndef EM_OPENRISC
+#define EM_OPENRISC 92
+#endif
 #ifndef EM_NANOMIPS
 #define EM_NANOMIPS 249
 #endif
@@ -293,6 +296,12 @@ static const char *select_platform(const char *clientname)
                  header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "nanomips-linux";
             }
+            else
+            if (header.ehdr32.e_machine == EM_OPENRISC &&
+                (header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "or1k-linux";
+            }
          }
 
       } else if (n_bytes >= sizeof(Elf64_Ehdr) && header.c[EI_CLASS] == ELFCLASS64) {
@@ -428,7 +437,8 @@ int main(int argc, char** argv, char** envp)
        (0==strcmp(VG_PLATFORM,"mips32-linux")) ||
        (0==strcmp(VG_PLATFORM,"mips64-linux")) ||
        (0==strcmp(VG_PLATFORM,"nanomips-linux")) ||
-       (0==strcmp(VG_PLATFORM,"riscv64-linux")))
+       (0==strcmp(VG_PLATFORM,"riscv64-linux")) ||
+       (0==strcmp(VG_PLATFORM,"or1k-linux")))
       default_platform = VG_PLATFORM;
 #  elif defined(VGO_solaris)
    if ((0==strcmp(VG_PLATFORM,"x86-solaris")) ||
