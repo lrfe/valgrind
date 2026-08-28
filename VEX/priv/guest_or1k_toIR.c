@@ -53,6 +53,7 @@ static IRSB* irsb;
 /*--- IR helpers ---*/
 
 static IRExpr* mkU32 ( UInt i )        { return IRExpr_Const(IRConst_U32(i)); }
+static IRExpr* mkU8  ( UInt i )        { return IRExpr_Const(IRConst_U8((UChar)i)); }
 static void    stmt  ( IRStmt* st )    { addStmtToIRSB(irsb, st); }
 static IRTemp  newTemp ( IRType ty )   { return newIRTemp(irsb->tyenv, ty); }
 static IRExpr* mkexpr ( IRTemp t )     { return IRExpr_RdTmp(t); }
@@ -60,6 +61,8 @@ static void    assign ( IRTemp t, IRExpr* e ) { stmt(IRStmt_WrTmp(t, e)); }
 static IRExpr* unop  ( IROp op, IRExpr* a )            { return IRExpr_Unop(op, a); }
 static IRExpr* binop ( IROp op, IRExpr* a, IRExpr* b ) { return IRExpr_Binop(op, a, b); }
 static IRExpr* load32 ( IRExpr* addr ) { return IRExpr_Load(OR1K_ENDNESS, Ity_I32, addr); }
+static IRExpr* load16 ( IRExpr* addr ) { return IRExpr_Load(OR1K_ENDNESS, Ity_I16, addr); }
+static IRExpr* load8  ( IRExpr* addr ) { return IRExpr_Load(OR1K_ENDNESS, Ity_I8,  addr); }
 
 #define OFFB(_f)  offsetof(VexGuestOR1KState, _f)
 #define OFFB_PC   OFFB(guest_PC)
@@ -117,6 +120,15 @@ static IRExpr* mkCompare ( UInt code, IRExpr* a, IRExpr* b ) {
 
 /*--- one non-control insn -> IR (returns False if unrecognised) ---*/
 
+/* effective address for the base+disp memory forms. */
+static IRExpr* memEA ( UInt insn ) {
+   return binop(Iop_Add32, getIReg(rA(insn)), mkU32(sext16(imm16(insn))));
+}
+/* split immediate shared by l.sw/l.sb/l.sh. */
+static UInt splitImm ( UInt insn ) {
+   return sext16((rD(insn) << 11) | (insn & 0x7FF));
+}
+
 static Bool dis_simple ( UInt insn )
 {
    UInt op = opcOf(insn);
@@ -149,36 +161,131 @@ static Bool dis_simple ( UInt insn )
          putIReg(rD(insn), binop(Iop_Or32, getIReg(rA(insn)), mkU32(imm16(insn))));
          return True;
 
-      case 0x21: {                                /* l.lwz rD,imm(rA) */
-         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(sext16(imm16(insn))));
-         DIP("l.lwz r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
-         putIReg(rD(insn), load32(ea));
+      case 0x2b:                                  /* l.xori rD,rA,imm (signed) */
+         DIP("l.xori r%u,r%u,0x%x\n", rD(insn), rA(insn), imm16(insn));
+         putIReg(rD(insn), binop(Iop_Xor32, getIReg(rA(insn)),
+                                 mkU32(sext16(imm16(insn)))));
+         return True;
+
+      case 0x2e: {                                /* l.slli/srli/srai/rori rD,rA,L */
+         UInt amt = insn & 0x3F;
+         IRExpr* a = getIReg(rA(insn));
+         IROp iop;
+         const HChar* nm;
+         switch ((insn >> 6) & 0x3) {
+            case 0: iop = Iop_Shl32; nm = "l.slli"; break;
+            case 1: iop = Iop_Shr32; nm = "l.srli"; break;
+            case 2: iop = Iop_Sar32; nm = "l.srai"; break;
+            default: return False;                /* l.rori: later */
+         }
+         DIP("%s r%u,r%u,0x%x\n", nm, rD(insn), rA(insn), amt);
+         putIReg(rD(insn), binop(iop, a, mkU8(amt)));
          return True;
       }
 
-      case 0x35: {                                /* l.sw imm(rA),rB (split imm) */
-         UInt imm = (rD(insn) << 11) | (insn & 0x7FF);
-         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(sext16(imm)));
-         DIP("l.sw %d(r%u),r%u\n", (Int)sext16(imm), rA(insn), rB(insn));
+      case 0x21:                                  /* l.lwz rD,imm(rA) */
+         DIP("l.lwz r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), load32(memEA(insn)));
+         return True;
+
+      case 0x23:                                  /* l.lbz (byte, zero-ext) */
+         DIP("l.lbz r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), unop(Iop_8Uto32, load8(memEA(insn))));
+         return True;
+
+      case 0x24:                                  /* l.lbs (byte, sign-ext) */
+         DIP("l.lbs r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), unop(Iop_8Sto32, load8(memEA(insn))));
+         return True;
+
+      case 0x25:                                  /* l.lhz (half, zero-ext) */
+         DIP("l.lhz r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), unop(Iop_16Uto32, load16(memEA(insn))));
+         return True;
+
+      case 0x26:                                  /* l.lhs (half, sign-ext) */
+         DIP("l.lhs r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), unop(Iop_16Sto32, load16(memEA(insn))));
+         return True;
+
+      case 0x35: {                                /* l.sw imm(rA),rB */
+         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
+         DIP("l.sw %d(r%u),r%u\n", (Int)splitImm(insn), rA(insn), rB(insn));
          stmt(IRStmt_Store(OR1K_ENDNESS, ea, getIReg(rB(insn))));
          return True;
       }
 
-      case 0x38: {                                /* ALU rD,rA,rB (opcode2 in [9:6],[3:0]) */
-         if ((insn >> 6) & 0xF) return False;     /* shift/extend variants: later */
-         IROp iop;
-         const HChar* nm;
-         switch (insn & 0xF) {
-            case 0x0: iop = Iop_Add32; nm = "l.add"; break;
-            case 0x2: iop = Iop_Sub32; nm = "l.sub"; break;
-            case 0x3: iop = Iop_And32; nm = "l.and"; break;
-            case 0x4: iop = Iop_Or32;  nm = "l.or";  break;
-            case 0x5: iop = Iop_Xor32; nm = "l.xor"; break;
-            default:  return False;
-         }
-         DIP("%s r%u,r%u,r%u\n", nm, rD(insn), rA(insn), rB(insn));
-         putIReg(rD(insn), binop(iop, getIReg(rA(insn)), getIReg(rB(insn))));
+      case 0x36: {                                /* l.sb imm(rA),rB (low 8) */
+         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
+         DIP("l.sb %d(r%u),r%u\n", (Int)splitImm(insn), rA(insn), rB(insn));
+         stmt(IRStmt_Store(OR1K_ENDNESS, ea, unop(Iop_32to8, getIReg(rB(insn)))));
          return True;
+      }
+
+      case 0x37: {                                /* l.sh imm(rA),rB (low 16) */
+         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
+         DIP("l.sh %d(r%u),r%u\n", (Int)splitImm(insn), rA(insn), rB(insn));
+         stmt(IRStmt_Store(OR1K_ENDNESS, ea, unop(Iop_32to16, getIReg(rB(insn)))));
+         return True;
+      }
+
+      case 0x38: {                                /* register ALU / shift / extend / mul */
+         UInt opc2 = (insn >> 8) & 0x3;
+         UInt opc3 = insn & 0xF;
+         if (opc2 == 0) {
+            switch (opc3) {
+               case 0x0: case 0x2: case 0x3: case 0x4: case 0x5: {
+                  IROp iop; const HChar* nm;
+                  switch (opc3) {
+                     case 0x0: iop = Iop_Add32; nm = "l.add"; break;
+                     case 0x2: iop = Iop_Sub32; nm = "l.sub"; break;
+                     case 0x3: iop = Iop_And32; nm = "l.and"; break;
+                     case 0x4: iop = Iop_Or32;  nm = "l.or";  break;
+                     default:  iop = Iop_Xor32; nm = "l.xor"; break;
+                  }
+                  DIP("%s r%u,r%u,r%u\n", nm, rD(insn), rA(insn), rB(insn));
+                  putIReg(rD(insn), binop(iop, getIReg(rA(insn)), getIReg(rB(insn))));
+                  return True;
+               }
+               case 0x8: {                        /* l.sll/srl/sra rD,rA,rB */
+                  IROp iop; const HChar* nm;
+                  IRExpr* amt = unop(Iop_32to8,
+                                     binop(Iop_And32, getIReg(rB(insn)), mkU32(0x1F)));
+                  switch ((insn >> 6) & 0x3) {
+                     case 0: iop = Iop_Shl32; nm = "l.sll"; break;
+                     case 1: iop = Iop_Shr32; nm = "l.srl"; break;
+                     case 2: iop = Iop_Sar32; nm = "l.sra"; break;
+                     default: return False;       /* l.ror: later */
+                  }
+                  DIP("%s r%u,r%u,r%u\n", nm, rD(insn), rA(insn), rB(insn));
+                  putIReg(rD(insn), binop(iop, getIReg(rA(insn)), amt));
+                  return True;
+               }
+               case 0xc: {                        /* l.ext{b,h}{s,z} rD,rA */
+                  IROp iop; const HChar* nm;
+                  switch ((insn >> 6) & 0x3) {
+                     case 0: iop = Iop_16Sto32; nm = "l.exths"; goto half;
+                     case 2: iop = Iop_16Uto32; nm = "l.exthz"; goto half;
+                     case 1: iop = Iop_8Sto32;  nm = "l.extbs"; goto byte;
+                     default: iop = Iop_8Uto32;  nm = "l.extbz"; goto byte;
+                  }
+                half:
+                  DIP("%s r%u,r%u\n", nm, rD(insn), rA(insn));
+                  putIReg(rD(insn), unop(iop, unop(Iop_32to16, getIReg(rA(insn)))));
+                  return True;
+                byte:
+                  DIP("%s r%u,r%u\n", nm, rD(insn), rA(insn));
+                  putIReg(rD(insn), unop(iop, unop(Iop_32to8, getIReg(rA(insn)))));
+                  return True;
+               }
+               default: return False;
+            }
+         } else if (opc2 == 3 && opc3 == 0x6) {   /* l.mul rD,rA,rB */
+            DIP("l.mul r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+            putIReg(rD(insn), binop(Iop_Mul32, getIReg(rA(insn)), getIReg(rB(insn))));
+            return True;
+         }
+         return False;
       }
 
       case 0x2f: {                                /* l.sf*i rA,imm (code in rD field) */
