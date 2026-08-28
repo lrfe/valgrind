@@ -121,8 +121,16 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
       case Iex_Load: {
          HReg base, dst = newVRegI(env);
          Short disp;
+         /* Pick the load width from the result type: lwz/lhz/lbz. */
+         UInt opc;
+         switch (e->Iex.Load.ty) {
+            case Ity_I8:  opc = 0x23; break;   /* l.lbz */
+            case Ity_I16: opc = 0x25; break;   /* l.lhz */
+            case Ity_I32: opc = 0x21; break;   /* l.lwz */
+            default: vpanic("iselIntExpr_R(or1k): bad load type");
+         }
          iselAddr(env, &base, &disp, e->Iex.Load.addr);
-         addInstr(env, OR1KInstr_Load(0x21, dst, base, disp));   /* lwz */
+         addInstr(env, OR1KInstr_Load(opc, dst, base, disp));
          return dst;
       }
 
@@ -346,9 +354,17 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
       case Ist_Store: {
          HReg base, r;
          Short disp;
+         /* Pick the store width from the data type: l.sw/l.sh/l.sb. */
+         UInt opc;
+         switch (typeOfIRExpr(env->type_env, stmt->Ist.Store.data)) {
+            case Ity_I8:  opc = 0x36; break;   /* l.sb */
+            case Ity_I16: opc = 0x37; break;   /* l.sh */
+            case Ity_I32: opc = 0x35; break;   /* l.sw */
+            default: vpanic("iselStmt(or1k): bad store type");
+         }
          iselAddr(env, &base, &disp, stmt->Ist.Store.addr);
          r = iselIntExpr_R(env, stmt->Ist.Store.data);
-         addInstr(env, OR1KInstr_Store(0x35, base, r, disp));
+         addInstr(env, OR1KInstr_Store(opc, base, r, disp));
          return;
       }
 
