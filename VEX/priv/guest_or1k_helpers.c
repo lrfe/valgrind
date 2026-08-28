@@ -92,25 +92,27 @@ IRExpr* guest_or1k_spechelper ( const HChar* function_name,
 
 /*--- precise memory exceptions ---*/
 
-/* only the PC must be current at a faulting access, so a restart re-runs the right insn. */
+/* SP, FP and PC must be current at a faulting access: the unwinder and */
+/* the stack-tracking machinery both read them there. */
 Bool guest_or1k_state_requires_precise_mem_exns (
         Int minoff, Int maxoff, VexRegisterUpdates pxControl )
 {
+   Int sp_min = offsetof(VexGuestOR1KState, guest_r1);
+   Int sp_max = sp_min + 4 - 1;
+   Int fp_min = offsetof(VexGuestOR1KState, guest_r2);
+   Int fp_max = fp_min + 4 - 1;
    Int pc_min = offsetof(VexGuestOR1KState, guest_PC);
    Int pc_max = pc_min + 4 - 1;
 
-   if (maxoff < pc_min || minoff > pc_max) {
-      /* no overlap with PC */
-      if (pxControl == VexRegUpdSpAtMemAccess) {
-         Int sp_min = offsetof(VexGuestOR1KState, guest_r1);
-         Int sp_max = sp_min + 4 - 1;
-         if (maxoff < sp_min || minoff > sp_max)
-            return False;
-         return True;
-      }
+   if (!(maxoff < sp_min || minoff > sp_max))
+      return True;
+   if (pxControl == VexRegUpdSpAtMemAccess)
       return False;
-   }
-   return True;
+   if (!(maxoff < fp_min || minoff > fp_max))
+      return True;
+   if (!(maxoff < pc_min || minoff > pc_max))
+      return True;
+   return False;
 }
 
 /*--- guest-state layout ---*/
