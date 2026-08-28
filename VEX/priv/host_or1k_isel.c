@@ -396,18 +396,22 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    for (i = 0; i < bb->stmts_used; i++)
       iselStmt(&env, bb->stmts[i]);
 
-   /* block terminator: transfer to bb->next. */
-   if (bb->next->tag == Iex_Const) {
-      vassert(bb->next->Iex.Const.con->tag == Ico_U32);
-      addInstr(&env, OR1KInstr_XDirect(bb->next->Iex.Const.con->Ico.U32,
-                                       bb->offsIP, OR1Kcc_AL));
+   /* Transfer to bb->next.  The jump kind decides how and takes priority
+      over a constant target, so a syscall still reaches the scheduler. */
+   if (bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
+       || bb->jumpkind == Ijk_Ret) {
+      if (bb->next->tag == Iex_Const) {
+         vassert(bb->next->Iex.Const.con->tag == Ico_U32);
+         addInstr(&env, OR1KInstr_XDirect(bb->next->Iex.Const.con->Ico.U32,
+                                          bb->offsIP, OR1Kcc_AL));
+      } else {
+         addInstr(&env, OR1KInstr_XIndir(iselIntExpr_R(&env, bb->next),
+                                         bb->offsIP, OR1Kcc_AL));
+      }
    } else {
-      HReg r = iselIntExpr_R(&env, bb->next);
-      if (bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
-          || bb->jumpkind == Ijk_Ret)
-         addInstr(&env, OR1KInstr_XIndir(r, bb->offsIP, OR1Kcc_AL));
-      else
-         addInstr(&env, OR1KInstr_XAssisted(r, bb->offsIP, OR1Kcc_AL, bb->jumpkind));
+      /* Assisted exits always go through a register target. */
+      addInstr(&env, OR1KInstr_XAssisted(iselIntExpr_R(&env, bb->next),
+                                         bb->offsIP, OR1Kcc_AL, bb->jumpkind));
    }
 
    env.code->n_vregs = env.vreg_ctr;
