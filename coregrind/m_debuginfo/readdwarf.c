@@ -2408,7 +2408,8 @@ static Bool summarise_context(/*OUT*/Addr* base,
       si_m->cfa_off = ctxs->cfa_off;
 #     if defined(VGA_x86) || defined(VGA_amd64) || defined(VGA_s390x) \
          || defined(VGA_mips32) || defined(VGA_nanomips) \
-         || defined(VGA_mips64) || defined(VGA_riscv64)
+         || defined(VGA_mips64) || defined(VGA_riscv64) \
+         || defined(VGA_or1k)
       si_m->cfa_how = CFIC_IA_SPREL;
 #     elif defined(VGA_arm)
       si_m->cfa_how = CFIC_ARM_R13REL;
@@ -2423,7 +2424,8 @@ static Bool summarise_context(/*OUT*/Addr* base,
       si_m->cfa_off = ctxs->cfa_off;
 #     if defined(VGA_x86) || defined(VGA_amd64) || defined(VGA_s390x) \
          || defined(VGA_mips32) || defined(VGA_nanomips) \
-         || defined(VGA_mips64) || defined(VGA_riscv64)
+         || defined(VGA_mips64) || defined(VGA_riscv64) \
+         || defined(VGA_or1k)
       si_m->cfa_how = CFIC_IA_BPREL;
 #     elif defined(VGA_arm)
       si_m->cfa_how = CFIC_ARM_R12REL;
