@@ -357,6 +357,38 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
    dres.hint        = Dis_HintNone;
    dres.jk_StopHere = Ijk_INVALID;
 
+   /* Client-request magic: l.srli r0,r0,{13,29,3,19} then a marker word. */
+   if (insn == 0xB800004Du
+       && fetch32BE(code + delta + 4)  == 0xB800005Du
+       && fetch32BE(code + delta + 8)  == 0xB8000043u
+       && fetch32BE(code + delta + 12) == 0xB8000053u) {
+      UInt mark = fetch32BE(code + delta + 16);
+      if (mark == 0xE1AD6804u) {                 /* l.or r13,r13,r13: request */
+         DIP("or1k-clientreq\n");
+         putPC(mkU32(pc + 20));
+         dres.len = 20; dres.whatNext = Dis_StopHere;
+         dres.jk_StopHere = Ijk_ClientReq;
+         return dres;
+      }
+      if (mark == 0xE1CE7004u) {                 /* l.or r14,r14,r14: NRADDR */
+         DIP("or1k-get-nraddr\n");
+         putIReg(11, IRExpr_Get(offsetof(VexGuestOR1KState, guest_NRADDR),
+                                Ity_I32));
+         putPC(mkU32(pc + 20));
+         dres.len = 20;
+         return dres;
+      }
+      if (mark == 0xE1EF7804u) {                 /* l.or r15,r15,r15: noredir */
+         DIP("or1k-call-noredir-r25\n");
+         putIReg(9, mkU32(pc + 20));
+         putPC(getIReg(25));
+         dres.len = 20; dres.whatNext = Dis_StopHere;
+         dres.jk_StopHere = Ijk_NoRedir;
+         return dres;
+      }
+      /* no marker: the shifts are architectural no-ops, decode normally. */
+   }
+
    switch (opcOf(insn)) {
 
       case 0x00: {                               /* l.j N */
