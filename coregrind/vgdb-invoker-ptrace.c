@@ -51,6 +51,19 @@ struct user {
 };
 #endif
 
+#if defined(VGA_or1k)
+/* musl on or1k provides neither struct user nor the elf_gregset types; pull
+   user_regs_struct from the kernel and define what vgdb needs. */
+#include <asm/ptrace.h>
+struct user {
+   struct user_regs_struct regs;
+};
+typedef unsigned long or1k_elf_greg_t;
+typedef or1k_elf_greg_t
+   elf_gregset_t[sizeof(struct user_regs_struct)/sizeof(or1k_elf_greg_t)];
+typedef struct __or1k_fpu_state elf_fpregset_t;
+#endif
+
 #ifdef PTRACE_GETREGSET
 // TBD: better have a configure test instead ?
 #define HAVE_PTRACE_GETREGSET
@@ -63,7 +76,7 @@ struct user {
 // The only platform on which we must use PTRACE_GETREGSET is here.
 // The resulting vgdb cannot work in a bi-arch setup.
 // -1 means we will check that PTRACE_GETREGSET works.
-#  if defined(VGA_arm64) || defined(VGA_riscv64)
+#  if defined(VGA_arm64) || defined(VGA_riscv64) || defined(VGA_or1k)
 #define USE_PTRACE_GETREGSET
 #  endif
 #endif
@@ -887,6 +900,8 @@ Bool invoker_invoke_gdbserver (pid_t pid)
    sp = user_mod.regs[29];
 #elif defined(VGA_riscv64)
    sp = user_mod.regs.sp;
+#elif defined(VGA_or1k)
+   sp = user_mod.regs.gpr[1];
 #else
    I_die_here : (sp) architecture missing in vgdb-invoker-ptrace.c
 #endif
@@ -977,6 +992,9 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 
 #elif defined(VGA_riscv64)
       assert(0);
+
+#elif defined(VGA_or1k)
+      assert(0); // gdb-invoked calls not yet supported on or1k
 
 #else
       I_die_here : architecture missing in vgdb-invoker-ptrace.c
@@ -1089,6 +1107,8 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs.a0 = check;
       user_mod.regs.ra = bad_return;
       user_mod.regs.pc = shared64->invoke_gdbserver;
+#elif defined(VGA_or1k)
+      assert(0); // or1k is 32-bit; no 64-bit inferior
 #else
       I_die_here: architecture missing in vgdb-invoker-ptrace.c
 #endif

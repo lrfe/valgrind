@@ -442,7 +442,7 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
 #  define VG_LITTLEENDIAN 1
 #elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_s390x) \
       || ((defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)) \
-      && defined (_MIPSEB))
+      && defined (_MIPSEB)) || defined(VGA_or1k)
 #  define VG_BIGENDIAN 1
 #else
 #  error Unknown arch
@@ -487,7 +487,7 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
       || defined(VGA_arm) || defined(VGA_s390x) \
       || defined(VGA_mips32) || defined(VGA_mips64) \
       || defined(VGA_arm64) || defined(VGA_nanomips) \
-      || defined(VGA_riscv64)
+      || defined(VGA_riscv64) || defined(VGA_or1k)
 #  define VG_REGPARM(n)            /* */
 #else
 #  error Unknown arch

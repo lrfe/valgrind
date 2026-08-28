@@ -1253,7 +1253,8 @@ AM_CONDITIONAL(VGCONF_OS_IS_LINUX,
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xNANOMIPS_LINUX \
-                 -o x$VGCONF_PLATFORM_PRI_CAPS = xRISCV64_LINUX)
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xRISCV64_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xOR1K_LINUX)
 AM_CONDITIONAL(VGCONF_OS_IS_FREEBSD,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD \
@@ -4164,6 +4165,9 @@ AC_MSG_RESULT([yes])
 ], [
 ac_have_armv82_dotprod_feature=no
 AC_MSG_RESULT([no])
+], [
+ac_have_armv82_dotprod_feature=no
+AC_MSG_RESULT([no (cross)])
 ])
 CFLAGS="$save_CFLAGS"
 
@@ -4184,6 +4188,9 @@ AC_MSG_RESULT([yes])
 ], [
 ac_have_armv8_crypto=no
 AC_MSG_RESULT([no])
+], [
+ac_have_armv8_crypto=no
+AC_MSG_RESULT([no (cross)])
 ])
 CFLAGS="$save_CFLAGS"
 

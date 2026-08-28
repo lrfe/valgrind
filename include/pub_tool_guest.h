@@ -65,6 +65,9 @@
 #elif defined(VGA_riscv64)
 #  include "libvex_guest_riscv64.h"
    typedef VexGuestRISCV64State VexGuestArchState;
+#elif defined(VGA_or1k)
+#  include "libvex_guest_or1k.h"
+   typedef VexGuestOR1KState VexGuestArchState;
 #else
 #  error Unknown arch
 #endif

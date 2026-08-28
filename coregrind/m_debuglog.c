@@ -756,6 +756,39 @@ static UInt local_sys_getpid ( void )
    return res;
 }
 
+#elif defined(VGP_or1k_linux)
+
+__attribute__((noinline))
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   register RegWord r11 asm("r11") = __NR_write;
+   register RegWord r3  asm("r3")  = 2;                     /* stderr */
+   register RegWord r4  asm("r4")  = (RegWord)(Addr)buf;
+   register RegWord r5  asm("r5")  = n;
+   __asm__ volatile (
+      "l.sys 1"
+      : "=r" (r11)
+      : "r" (r11), "r" (r3), "r" (r4), "r" (r5)
+      : "memory", "r6", "r7", "r8", "r12", "r13", "r15", "r17",
+        "r19", "r21", "r23", "r25", "r27", "r29", "r31"
+   );
+   return (UInt)r11;
+}
+
+__attribute__((noinline))
+static UInt local_sys_getpid ( void )
+{
+   register RegWord r11 asm("r11") = __NR_getpid;
+   __asm__ volatile (
+      "l.sys 1"
+      : "=r" (r11)
+      : "r" (r11)
+      : "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r12", "r13",
+        "r15", "r17", "r19", "r21", "r23", "r25", "r27", "r29", "r31"
+   );
+   return (UInt)r11;
+}
+
 #else
 # error Unknown platform
 #endif
