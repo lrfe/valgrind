@@ -352,9 +352,8 @@ DECL_TEMPLATE (or1k_linux, sys_sethostname);
 
 PRE(sys_mmap2)
 {
-   /* Exactly like sys_mmap() except the file offset is specified in 4096 byte
-      units rather than bytes, so that it can be used for files bigger than
-      2^32 bytes. */
+   /* Exactly like sys_mmap() except the file offset is given in page-sized
+      chunks: or1k wires mmap2 to sys_mmap_pgoff, so the unit is 8192. */
    SysRes r;
    PRINT("sys_mmap2 ( %#lx, %lu, %ld, %ld, %ld, %ld )",
          ARG1, ARG2, SARG3, SARG4, SARG5, SARG6);
@@ -362,7 +361,7 @@ PRE(sys_mmap2)
                  unsigned long, prot, unsigned long, flags,
                  unsigned long, fd, unsigned long, offset);
    r = or1k_PRE_sys_mmap(tid, ARG1, ARG2, ARG3, ARG4, ARG5,
-                         4096 * (Off64T) ARG6);
+                         (Off64T) VKI_PAGE_SIZE * (Off64T) ARG6);
    SET_STATUS_from_SysRes(r);
 }
 

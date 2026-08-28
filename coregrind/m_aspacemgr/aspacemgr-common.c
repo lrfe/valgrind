@@ -154,7 +154,7 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
                           prot, flags, fd, offset / 8192);
 #  elif defined(VGP_x86_linux) || defined(VGP_ppc32_linux) \
-        || defined(VGP_arm_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux)
+        || defined(VGP_arm_linux) || defined(VGP_nanomips_linux)
    /* mmap2 uses 4096 chunks even if actual page size is bigger. */
    aspacem_assert((offset % 4096) == 0);
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
