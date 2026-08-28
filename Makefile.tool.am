@@ -102,6 +102,9 @@ TOOL_LDFLAGS_MIPS32_LINUX = \
 	-static -nodefaultlibs -nostartfiles -u __start @FLAG_NO_BUILD_ID@ \
 	@FLAG_M32@
 
+TOOL_LDFLAGS_OR1K_LINUX = \
+	-static -nodefaultlibs -nostartfiles -u _start @FLAG_NO_BUILD_ID@
+
 TOOL_LDFLAGS_NANOMIPS_LINUX = \
 	-static -nodefaultlibs -nostartfiles -u __start @FLAG_NO_BUILD_ID@ \
 	@FLAG_M32@ -Wl,-no-relax
@@ -184,6 +187,9 @@ LIBREPLACEMALLOC_MIPS32_LINUX = \
 LIBREPLACEMALLOC_MIPS64_LINUX = \
 	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-mips64-linux.a
 
+LIBREPLACEMALLOC_OR1K_LINUX = \
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-or1k-linux.a
+
 LIBREPLACEMALLOC_RISCV64_LINUX = \
 	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-riscv64-linux.a
 
@@ -262,6 +268,11 @@ LIBREPLACEMALLOC_LDFLAGS_MIPS32_LINUX = \
 LIBREPLACEMALLOC_LDFLAGS_MIPS64_LINUX = \
 	-Wl,--whole-archive \
 	$(LIBREPLACEMALLOC_MIPS64_LINUX) \
+	-Wl,--no-whole-archive
+
+LIBREPLACEMALLOC_LDFLAGS_OR1K_LINUX = \
+	-Wl,--whole-archive \
+	$(LIBREPLACEMALLOC_OR1K_LINUX) \
 	-Wl,--no-whole-archive
 
 LIBREPLACEMALLOC_LDFLAGS_RISCV64_LINUX = \

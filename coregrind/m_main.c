@@ -2602,6 +2602,11 @@ static void final_tidyup(ThreadId tid)
    VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
             offsetof(VexGuestS390XState, guest_r2),
             sizeof(VG_(threads)[tid].arch.vex.guest_r2));
+#  elif defined(VGA_or1k)
+   VG_(threads)[tid].arch.vex.guest_r11 = to_run;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestOR1KState, guest_r11),
+            sizeof(VG_(threads)[tid].arch.vex.guest_r11));
 #else
    I_die_here : architecture missing in m_main.c
 #endif
@@ -3067,6 +3072,33 @@ asm("\n"
     "\tbal  _start_in_C_linux\n"
     "\tbreak  0x7\n"
     ".previous\n"
+);
+#elif defined(VGP_or1k_linux)
+asm("\n"
+    ".text\n"
+    "\t.global _start\n"
+    "\t.type _start,@function\n"
+    "_start:\n"
+    /* r13 <- &vgPlain_interim_stack */
+    "\tl.movhi r13, hi(vgPlain_interim_stack)\n"
+    "\tl.ori   r13, r13, lo(vgPlain_interim_stack)\n"
+    "\tl.movhi r14, hi("VG_STRINGIFY(VG_STACK_GUARD_SZB)")\n"
+    "\tl.ori   r14, r14, lo("VG_STRINGIFY(VG_STACK_GUARD_SZB)")\n"
+    "\tl.add   r13, r13, r14\n"
+    "\tl.movhi r14, hi("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)")\n"
+    "\tl.ori   r14, r14, lo("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)")\n"
+    "\tl.add   r13, r13, r14\n"
+    /* round down to 16-byte boundary */
+    "\tl.movhi r14, 0xffff\n"
+    "\tl.ori   r14, r14, 0xfff0\n"
+    "\tl.and   r13, r13, r14\n"
+    /* r3 = old sp (arg1 to _start_in_C_linux); sp = new stack */
+    "\tl.ori   r3, r1, 0\n"
+    "\tl.ori   r1, r13, 0\n"
+    "\tl.movhi r13, hi(_start_in_C_linux)\n"
+    "\tl.ori   r13, r13, lo(_start_in_C_linux)\n"
+    "\tl.jr    r13\n"
+    "\tl.nop\n"
 );
 #elif defined(VGP_mips64_linux)
 asm(

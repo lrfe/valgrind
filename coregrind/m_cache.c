@@ -540,7 +540,7 @@ get_cache_info(VexArchInfo *vai)
    defined(VGA_ppc64be) || defined(VGA_ppc64le) || \
    defined(VGA_mips32) || defined(VGA_mips64) || \
    defined(VGA_arm64) || defined(VGA_nanomips) || \
-   defined(VGA_riscv64)
+   defined(VGA_riscv64) || defined(VGA_or1k)
 static Bool
 get_cache_info(VexArchInfo *vai)
 {

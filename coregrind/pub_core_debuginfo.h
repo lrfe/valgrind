@@ -147,6 +147,10 @@ typedef
 typedef
    struct { Addr pc; Addr sp; Addr fp; Addr ra; }
    D3UnwindRegs;
+#elif defined(VGA_or1k)
+typedef
+   struct { Addr pc; Addr sp; Addr fp; Addr ra; } /* PC, r1, r2, r9 */
+   D3UnwindRegs;
 #else
 #  error "Unsupported arch"
 #endif
