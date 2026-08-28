@@ -61,6 +61,8 @@ static Bool fitsU16 ( UInt c ) { return c <= 0xFFFF; }
 static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e );
 static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard );
 static HReg condTo01 ( ISelEnv* env, IRExpr* guard );   /* I1 -> 0/1 in a reg */
+static Bool doHelperCall ( RetLoc*, ISelEnv*, IRExpr* guard, IRCallee*,
+                           IRType retTy, IRExpr** args );
 
 /*--- constant materialization ---*/
 
@@ -140,6 +142,52 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
          switch (op) {
             case Iop_32to8: case Iop_32to16:
                return iselIntExpr_R(env, a);          /* low bits already there */
+            case Iop_Not32: {
+               HReg s = iselIntExpr_R(env, a);
+               HReg dst = newVRegI(env);
+               /* ~x == x XOR -1 */
+               HReg m1 = iselConst(env, 0xFFFFFFFF);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_XOR, dst, s, m1));
+               return dst;
+            }
+            case Iop_Left32: {
+               /* Left32(x) = x | (-x); MSB ends up set iff x != 0. */
+               HReg s = iselIntExpr_R(env, a);
+               HReg neg = newVRegI(env), dst = newVRegI(env);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_SUB, neg, OR1K_ZERO, s));
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_OR, dst, s, neg));
+               return dst;
+            }
+            case Iop_CmpwNEZ32: {
+               /* all-ones iff x != 0: (x | -x) >>s 31. */
+               HReg s = iselIntExpr_R(env, a);
+               HReg neg = newVRegI(env), t = newVRegI(env), dst = newVRegI(env);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_SUB, neg, OR1K_ZERO, s));
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_OR, t, s, neg));
+               addInstr(env, OR1KInstr_ShiftI(2/*sra*/, dst, t, 31));
+               return dst;
+            }
+            case Iop_1Sto8: case Iop_1Sto16: case Iop_1Sto32: {
+               /* all-ones or zero from an I1, honouring the F/NF sense. */
+               OR1KCondCode c = iselCondCode(env, a);
+               HReg m1 = iselConst(env, 0xFFFFFFFF);
+               HReg dst = newVRegI(env);
+               if (c == OR1Kcc_F)
+                  addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, m1, OR1K_ZERO));
+               else
+                  addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, m1));
+               return dst;
+            }
+            case Iop_16HIto8: case Iop_32HIto16: {
+               /* high half: shift the significant bits down. */
+               HReg s = iselIntExpr_R(env, a);
+               HReg dst = newVRegI(env);
+               addInstr(env, OR1KInstr_ShiftI(1/*srl*/, dst, s,
+                                              op == Iop_16HIto8 ? 8 : 16));
+               return dst;
+            }
+            case Iop_16to8:
+               return iselIntExpr_R(env, a);          /* low bits already there */
             case Iop_1Uto32: {
                /* materialize the I1 into 0/1 via l.sf* + l.cmov, honouring
                   the F/NF sense that iselCondCode reports. */
@@ -208,15 +256,28 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
             }
          }
 
-         /* register-register */
+         /* concatenations used by memcheck: (hi << w) | (lo & mask) */
+         if (op == Iop_16HLto32 || op == Iop_8HLto16) {
+            UInt w    = op == Iop_16HLto32 ? 16 : 8;
+            UInt mask = op == Iop_16HLto32 ? 0xFFFF : 0xFF;
+            HReg hi = iselIntExpr_R(env, a1);
+            HReg lo = iselIntExpr_R(env, a2);
+            HReg hs = newVRegI(env), lm = newVRegI(env), dst = newVRegI(env);
+            addInstr(env, OR1KInstr_ShiftI(0/*sll*/, hs, hi, (UChar)w));
+            addInstr(env, OR1KInstr_AluI(0x29/*andi*/, lm, lo, (UShort)mask));
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_OR, dst, hs, lm));
+            return dst;
+         }
+
+         /* register-register (narrow widths share the 32-bit ALU op). */
          OR1KAluOp aop;
          switch (op) {
-            case Iop_Add32: aop = OR1Kalu_ADD; break;
-            case Iop_Sub32: aop = OR1Kalu_SUB; break;
-            case Iop_And32: aop = OR1Kalu_AND; break;
-            case Iop_Or32:  aop = OR1Kalu_OR;  break;
-            case Iop_Xor32: aop = OR1Kalu_XOR; break;
-            case Iop_Mul32: aop = OR1Kalu_MUL;  break;
+            case Iop_Add32: case Iop_Add16: case Iop_Add8: aop = OR1Kalu_ADD; break;
+            case Iop_Sub32: case Iop_Sub16: case Iop_Sub8: aop = OR1Kalu_SUB; break;
+            case Iop_And32: case Iop_And16: case Iop_And8: aop = OR1Kalu_AND; break;
+            case Iop_Or32:  case Iop_Or16:  case Iop_Or8:  aop = OR1Kalu_OR;  break;
+            case Iop_Xor32: case Iop_Xor16: case Iop_Xor8: aop = OR1Kalu_XOR; break;
+            case Iop_Mul32: case Iop_Mul16: case Iop_Mul8: aop = OR1Kalu_MUL; break;
             case Iop_DivS32: aop = OR1Kalu_DIVS; break;
             case Iop_DivU32: aop = OR1Kalu_DIVU; break;
             case Iop_Shl32: aop = OR1Kalu_SLL; break;
@@ -245,6 +306,17 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
          return dst;
       }
 
+      case Iex_CCall: {
+         RetLoc rloc = mk_RetLoc_INVALID();
+         if (!doHelperCall(&rloc, env, NULL/*guard*/, e->Iex.CCall.cee,
+                           e->Iex.CCall.retty, e->Iex.CCall.args))
+            goto irreducible;
+         vassert(rloc.pri == RLPri_Int);
+         HReg dst = newVRegI(env);
+         addInstr(env, (OR1KInstr*)genMove_OR1K(hregOR1K_GPR(11), dst, False));
+         return dst;
+      }
+
       default:
          break;
    }
@@ -262,6 +334,21 @@ static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
    if (guard->tag == Iex_Unop && guard->Iex.Unop.op == Iop_Not1) {
       OR1KCondCode c = iselCondCode(env, guard->Iex.Unop.arg);
       return c == OR1Kcc_F ? OR1Kcc_NF : OR1Kcc_F;
+   }
+   /* CmpNEZ{8,16,32}(x): F <- (x != 0), masking narrow widths first. */
+   if (guard->tag == Iex_Unop
+       && (guard->Iex.Unop.op == Iop_CmpNEZ8 || guard->Iex.Unop.op == Iop_CmpNEZ16
+           || guard->Iex.Unop.op == Iop_CmpNEZ32)) {
+      HReg s = iselIntExpr_R(env, guard->Iex.Unop.arg);
+      UInt mask = guard->Iex.Unop.op == Iop_CmpNEZ8  ? 0xFF
+                : guard->Iex.Unop.op == Iop_CmpNEZ16 ? 0xFFFF : 0;
+      if (mask) {
+         HReg m = newVRegI(env);
+         addInstr(env, OR1KInstr_AluI(0x29/*andi*/, m, s, (UShort)mask));
+         s = m;
+      }
+      addInstr(env, OR1KInstr_CmpI(1/*ne*/, s, 0));
+      return OR1Kcc_F;
    }
    /* And1/Or1: materialize both operands as 0/1 and test the combination.
       A single SR[F] can't hold a two-condition combination directly. */
@@ -314,6 +401,65 @@ static HReg condTo01 ( ISelEnv* env, IRExpr* guard )
    else
       addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, one));
    return dst;
+}
+
+/*--- helper calls ---*/
+
+/* Marshal the arguments for a C helper call and emit it.  Only integer args
+   up to 32 bits (in r3..r8), an optional GSPTR, and an optional guard are
+   handled; the result comes back in r11.  Uses the always-correct slow
+   scheme (compute args into vregs, then move them to the arg registers). */
+static Bool doHelperCall ( /*OUT*/RetLoc* retloc, ISelEnv* env,
+                           IRExpr* guard, IRCallee* cee,
+                           IRType retTy, IRExpr** args )
+{
+   *retloc = mk_RetLoc_INVALID();
+
+   UInt n_args = 0, nGSPTRs = 0;
+   for (UInt i = 0; args[i] != NULL; i++) {
+      if (args[i]->tag == Iex_GSPTR)  nGSPTRs++;
+      else if (args[i]->tag == Iex_VECRET) return False;   /* no vector return */
+      n_args++;
+   }
+   if (nGSPTRs > 1 || n_args > 6) return False;   /* only r3..r8 available */
+
+   HReg tmpregs[6];
+   for (UInt i = 0; i < n_args; i++) {
+      IRExpr* arg = args[i];
+      if (arg->tag == Iex_GSPTR) {
+         tmpregs[i] = OR1K_GSP;                    /* r30 holds the guest state */
+      } else {
+         IRType aTy = typeOfIRExpr(env->type_env, arg);
+         if (aTy != Ity_I32 && aTy != Ity_I16 && aTy != Ity_I8 && aTy != Ity_I1)
+            return False;                          /* only <=32-bit int args */
+         tmpregs[i] = (aTy == Ity_I1) ? condTo01(env, arg)
+                                      : iselIntExpr_R(env, arg);
+      }
+   }
+
+   HReg cond = INVALID_HREG;
+   if (guard) {
+      if (guard->tag == Iex_Const && guard->Iex.Const.con->tag == Ico_U1
+          && guard->Iex.Const.con->Ico.U1 == True) {
+         /* unconditional */
+      } else {
+         cond = condTo01(env, guard);
+      }
+   }
+
+   for (UInt i = 0; i < n_args; i++)
+      addInstr(env, (OR1KInstr*)genMove_OR1K(tmpregs[i], hregOR1K_GPR(3 + i),
+                                             False));
+
+   switch (retTy) {
+      case Ity_INVALID: *retloc = mk_RetLoc_simple(RLPri_None); break;
+      case Ity_I8: case Ity_I16: case Ity_I32:
+         *retloc = mk_RetLoc_simple(RLPri_Int); break;
+      default: return False;
+   }
+
+   addInstr(env, OR1KInstr_Call((Addr)cee->addr, *retloc, cond, (UChar)n_args));
+   return True;
 }
 
 /*--- statements ---*/
@@ -376,6 +522,26 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          return;
       }
 
+      case Ist_Dirty: {
+         IRDirty* d = stmt->Ist.Dirty.details;
+         IRType retty = Ity_INVALID;
+         if (d->tmp != IRTemp_INVALID)
+            retty = typeOfIRTemp(env->type_env, d->tmp);
+         RetLoc rloc = mk_RetLoc_INVALID();
+         if (!doHelperCall(&rloc, env, d->guard, d->cee, retty, d->args))
+            vpanic("iselStmt(or1k): Ist_Dirty");
+         if (d->tmp != IRTemp_INVALID) {
+            vassert(rloc.pri == RLPri_Int);        /* result is in r11 */
+            addInstr(env, (OR1KInstr*)genMove_OR1K(hregOR1K_GPR(11),
+                                        lookupIRTemp(env, d->tmp), False));
+         }
+         return;
+      }
+
+      case Ist_MBE:
+         /* memory-bus events: nothing to do for a serialized guest. */
+         return;
+
       default:
          ppIRStmt(stmt);
          vpanic("iselStmt(or1k)");
@@ -410,6 +576,7 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    /* Optionally a profiler increment (used with --profile-flags). */
    if (addProfInc)
       addInstr(&env, OR1KInstr_ProfInc());
+
 
    for (i = 0; i < bb->stmts_used; i++)
       iselStmt(&env, bb->stmts[i]);

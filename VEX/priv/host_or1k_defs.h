@@ -103,7 +103,7 @@ typedef enum {
    OR1Kin_Alu, OR1Kin_AluI, OR1Kin_ShiftI, OR1Kin_MovHi,
    OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext,
    OR1Kin_XDirect, OR1Kin_XIndir, OR1Kin_XAssisted,
-   OR1Kin_EvCheck, OR1Kin_ProfInc
+   OR1Kin_EvCheck, OR1Kin_ProfInc, OR1Kin_Call
 } OR1KInstrTag;
 
 typedef struct {
@@ -127,6 +127,9 @@ typedef struct {
       /* Profile increment: a fixed template patched later with the counter
          address by patchProfInc_OR1K(). */
       struct { /* empty */                              } ProfInc;
+      /* Helper call: args already in r3.., target in an immediate, result in
+         r11.  cond (if not invalid) guards the call; nArgRegs is the count. */
+      struct { Addr target; RetLoc rloc; HReg cond; UChar nArgRegs; } Call;
    } OR1Kin;
 } OR1KInstr;
 
@@ -144,6 +147,7 @@ extern OR1KInstr* OR1KInstr_XIndir    ( HReg dstGA, Int pcOff, OR1KCondCode );
 extern OR1KInstr* OR1KInstr_XAssisted ( HReg dstGA, Int pcOff, OR1KCondCode, IRJumpKind );
 extern OR1KInstr* OR1KInstr_EvCheck   ( Int offCounter, Int offFailAddr );
 extern OR1KInstr* OR1KInstr_ProfInc   ( void );
+extern OR1KInstr* OR1KInstr_Call      ( Addr target, RetLoc rloc, HReg cond, UChar nArgRegs );
 
 extern void ppOR1KInstr ( const OR1KInstr* i );
 

@@ -159,6 +159,12 @@ OR1KInstr* OR1KInstr_EvCheck ( Int offCounter, Int offFailAddr ) {
 OR1KInstr* OR1KInstr_ProfInc ( void ) {
    return mk(OR1Kin_ProfInc);
 }
+OR1KInstr* OR1KInstr_Call ( Addr target, RetLoc rloc, HReg cond, UChar nArgRegs ) {
+   OR1KInstr* i = mk(OR1Kin_Call);
+   i->OR1Kin.Call.target=target; i->OR1Kin.Call.rloc=rloc;
+   i->OR1Kin.Call.cond=cond; i->OR1Kin.Call.nArgRegs=nArgRegs;
+   return i;
+}
 
 /*--- pretty-print ---*/
 
@@ -220,6 +226,14 @@ void ppOR1KInstr ( const OR1KInstr* i ) {
          return;
       case OR1Kin_ProfInc:
          vex_printf("profinc");
+         return;
+      case OR1Kin_Call:
+         vex_printf("call 0x%lx [nArgRegs=%u", i->OR1Kin.Call.target,
+                    i->OR1Kin.Call.nArgRegs);
+         if (!hregIsInvalid(i->OR1Kin.Call.cond)) {
+            vex_printf(", cond="); ppHRegOR1K(i->OR1Kin.Call.cond);
+         }
+         vex_printf("]");
          return;
       default:
          vpanic("ppOR1KInstr");
@@ -424,6 +438,25 @@ Int emit_OR1KInstr ( /*MB_MOD*/Bool* is_profInc,
          *is_profInc = True;
          break;
       }
+      case OR1Kin_Call: {
+         /* If guarded, skip the 4-word call when the guard reg is zero. */
+         UChar* skip = NULL;
+         if (!hregIsInvalid(i->OR1Kin.Call.cond)) {
+            p = emitW(p, or1k_enc_sf(0x0/*sfeq*/, gpr(i->OR1Kin.Call.cond), 0));
+            skip = p;                              /* fill the branch in below */
+            p = emitW(p, or1k_enc_nop(0));         /* placeholder for l.bf */
+            p = emitW(p, or1k_enc_nop(0));         /* delay slot */
+         }
+         /* Load the target into r11 and call it (r9 <- return address). */
+         p = emitLoad32(p, 11, (UInt)i->OR1Kin.Call.target);
+         p = emitW(p, or1k_enc_jalr(11));
+         p = emitW(p, or1k_enc_nop(0));            /* delay slot */
+         if (skip) {                               /* branch over 4 remaining words */
+            (void)emitW(skip, or1k_enc_branch(0x04/*l.bf*/,
+                                              (Int)((p - skip) >> 2)));
+         }
+         break;
+      }
 
       default:
          vpanic("emit_OR1KInstr");
@@ -584,6 +617,20 @@ void getRegUsage_OR1K ( HRegUsage* u, const OR1KInstr* i, Bool mode64 )
       case OR1Kin_ProfInc:
          /* only fixed regs (r9/r11/r30) are touched. */
          return;
+      case OR1Kin_Call: {
+         /* Trashes all caller-saved allocatable regs: r3-r8, r11, r12 and the
+            odd r13..r31.  Even r14..r28 and r30 (GSP) are callee-saved. */
+         static const UInt clob[] = { 3,4,5,6,7,8, 11,12,
+                                      13,15,17,19,21,23,25,27,29,31 };
+         for (UInt k = 0; k < sizeof(clob)/sizeof(clob[0]); k++)
+            addHRegUse(u, HRmWrite, hregOR1K_GPR(clob[k]));
+         /* Reads the argument registers r3.. and the guard, if any. */
+         for (UInt a = 0; a < i->OR1Kin.Call.nArgRegs; a++)
+            addHRegUse(u, HRmRead, hregOR1K_GPR(3 + a));
+         if (!hregIsInvalid(i->OR1Kin.Call.cond))
+            addHRegUse(u, HRmRead, i->OR1Kin.Call.cond);
+         return;
+      }
       default:
          vpanic("getRegUsage_OR1K");
    }
@@ -618,6 +665,10 @@ void mapRegs_OR1K ( HRegRemap* m, OR1KInstr* i, Bool mode64 )
       case OR1Kin_XAssisted: mapReg(m, &i->OR1Kin.XAssisted.dstGA); return;
       case OR1Kin_EvCheck:
       case OR1Kin_ProfInc:
+         return;
+      case OR1Kin_Call:
+         if (!hregIsInvalid(i->OR1Kin.Call.cond))
+            mapReg(m, &i->OR1Kin.Call.cond);
          return;
       default:
          vpanic("mapRegs_OR1K");
