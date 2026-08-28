@@ -698,7 +698,7 @@ Int VG_(gettid)(void)
        * the /proc/self link is pointing...
        */
 
-#     if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+#     if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
          || defined(VGP_riscv64_linux)
       res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                              (UWord)"/proc/self",
@@ -754,7 +754,7 @@ Int VG_(getpid) ( void )
 Int VG_(getpgrp) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
       || defined(VGP_riscv64_linux)
    return sr_Res( VG_(do_syscall1)(__NR_getpgid, 0) );
 #  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)
@@ -851,7 +851,7 @@ Int VG_(getgroups)( Int size, UInt* list )
         || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)  \
         || defined(VGO_darwin) || defined(VGP_s390x_linux)    \
         || defined(VGP_mips32_linux) || defined(VGP_arm64_linux) \
-        || defined(VGO_solaris) || defined(VGP_nanomips_linux) \
+        || defined(VGO_solaris) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
         || defined(VGP_riscv64_linux) || defined(VGO_freebsd)
    SysRes sres;
    sres = VG_(do_syscall2)(__NR_getgroups, size, (Addr)list);
@@ -953,7 +953,7 @@ Int VG_(fork) ( void )
       fds[0] = fds[1] = -1;
    }
 
-#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
       || defined(VGP_riscv64_linux)
    SysRes res;
    res = VG_(do_syscall5)(__NR_clone, VKI_SIGCHLD,

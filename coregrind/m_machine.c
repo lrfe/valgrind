@@ -159,6 +159,11 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
    regs->r_sp = VG_(threads)[tid].arch.vex.guest_x2;
    regs->misc.RISCV64.r_fp = VG_(threads)[tid].arch.vex.guest_x8;
    regs->misc.RISCV64.r_ra = VG_(threads)[tid].arch.vex.guest_x1;
+#  elif defined(VGA_or1k)
+   regs->r_pc = VG_(threads)[tid].arch.vex.guest_PC;
+   regs->r_sp = VG_(threads)[tid].arch.vex.guest_r1;
+   regs->misc.OR1K.r_fp = VG_(threads)[tid].arch.vex.guest_r2;
+   regs->misc.OR1K.r_ra = VG_(threads)[tid].arch.vex.guest_r9;
 #  else
 #    error "Unknown arch"
 #  endif
@@ -409,6 +414,39 @@ static void apply_to_GPs_of_tid(ThreadId tid, void (*f)(ThreadId,
    (*f)(tid, "x29", vex->guest_x29);
    (*f)(tid, "x30", vex->guest_x30);
    (*f)(tid, "x31", vex->guest_x31);
+#elif defined(VGA_or1k)
+   (*f)(tid, "r0", vex->guest_r0);
+   (*f)(tid, "r1", vex->guest_r1);
+   (*f)(tid, "r2", vex->guest_r2);
+   (*f)(tid, "r3", vex->guest_r3);
+   (*f)(tid, "r4", vex->guest_r4);
+   (*f)(tid, "r5", vex->guest_r5);
+   (*f)(tid, "r6", vex->guest_r6);
+   (*f)(tid, "r7", vex->guest_r7);
+   (*f)(tid, "r8", vex->guest_r8);
+   (*f)(tid, "r9", vex->guest_r9);
+   (*f)(tid, "r10", vex->guest_r10);
+   (*f)(tid, "r11", vex->guest_r11);
+   (*f)(tid, "r12", vex->guest_r12);
+   (*f)(tid, "r13", vex->guest_r13);
+   (*f)(tid, "r14", vex->guest_r14);
+   (*f)(tid, "r15", vex->guest_r15);
+   (*f)(tid, "r16", vex->guest_r16);
+   (*f)(tid, "r17", vex->guest_r17);
+   (*f)(tid, "r18", vex->guest_r18);
+   (*f)(tid, "r19", vex->guest_r19);
+   (*f)(tid, "r20", vex->guest_r20);
+   (*f)(tid, "r21", vex->guest_r21);
+   (*f)(tid, "r22", vex->guest_r22);
+   (*f)(tid, "r23", vex->guest_r23);
+   (*f)(tid, "r24", vex->guest_r24);
+   (*f)(tid, "r25", vex->guest_r25);
+   (*f)(tid, "r26", vex->guest_r26);
+   (*f)(tid, "r27", vex->guest_r27);
+   (*f)(tid, "r28", vex->guest_r28);
+   (*f)(tid, "r29", vex->guest_r29);
+   (*f)(tid, "r30", vex->guest_r30);
+   (*f)(tid, "r31", vex->guest_r31);
 #else
 #  error Unknown arch
 #endif
@@ -2205,6 +2243,19 @@ Bool VG_(machine_get_hwcaps)( void )
      return True;
    }
 
+#elif defined(VGA_or1k)
+   {
+     va = VexArchOR1K;
+     vai.endness = VexEndnessBE;
+     vai.hwcaps  = 0;
+
+     VG_(debugLog)(1, "machine", "hwcaps = 0x%x\n", vai.hwcaps);
+
+     VG_(machine_get_cache_info)(&vai);
+
+     return True;
+   }
+
 #else
 #  error "Unknown arch"
 #endif
@@ -2349,6 +2400,10 @@ Int VG_(machine_get_size_of_largest_guest_register) ( void )
    /* 64-bit integer and floating-point registers, no vector set. */
    return 8;
 
+#  elif defined(VGA_or1k)
+   /* 32-bit integer registers. */
+   return 4;
+
 #  else
 #    error "Unknown arch"
 #  endif
@@ -2365,7 +2420,8 @@ void* VG_(fnptr_to_fnentry)( void* f )
       || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
       || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
       || defined(VGP_x86_solaris) || defined(VGP_amd64_solaris) \
-      || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
+      || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux) \
+      || defined(VGP_or1k_linux)
    return f;
 #  elif defined(VGP_ppc64be_linux)
    /* ppc64-linux uses the AIX scheme, in which f is a pointer to a

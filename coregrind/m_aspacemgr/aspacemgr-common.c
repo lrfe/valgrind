@@ -148,8 +148,13 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
 #  if defined(VGP_arm64_linux)
    res = VG_(do_syscall6)(__NR3264_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
+#  elif defined(VGP_or1k_linux)
+   /* or1k mmap2 chunks are page-sized (8192 bytes). */
+   aspacem_assert((offset % 8192) == 0);
+   res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
+                          prot, flags, fd, offset / 8192);
 #  elif defined(VGP_x86_linux) || defined(VGP_ppc32_linux) \
-        || defined(VGP_arm_linux) || defined(VGP_nanomips_linux)
+        || defined(VGP_arm_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux)
    /* mmap2 uses 4096 chunks even if actual page size is bigger. */
    aspacem_assert((offset % 4096) == 0);
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
@@ -263,7 +268,7 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 
 SysRes ML_(am_open) ( const HChar* pathname, Int flags, Int mode )
 {
-#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
       || defined(VGP_riscv64_linux)
    /* More recent Linux platforms have only __NR_openat and no __NR_open. */
    SysRes res = VG_(do_syscall4)(__NR_openat,
@@ -293,7 +298,7 @@ void ML_(am_close) ( Int fd )
 Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
 {
    SysRes res;
-#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux) \
       || defined(VGP_riscv64_linux)
    res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                            (UWord)path, (UWord)buf, bufsiz);
@@ -311,7 +316,7 @@ Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
 Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
 {
 #  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
-#  if defined(VGP_nanomips_linux)
+#  if defined(VGP_nanomips_linux) || defined(VGP_or1k_linux)
    SysRes res = VG_(do_syscall3)(__NR_fcntl64, fd, cmd, arg);
 #  else
    SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
@@ -326,8 +331,18 @@ Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
 
 Int ML_(am_lseek) ( Int fd, vki_off_t off, Int whence )
 {
+#  if defined(VGP_or1k_linux)
+   vki_loff_t result;
+   vki_loff_t off64 = off;
+   SysRes res = VG_(do_syscall5)(__NR__llseek, fd,
+                                 (UWord)(off64 >> 32),
+                                 (UWord)(off64 & 0xffffffff),
+                                 (UWord)&result, whence);
+   return sr_isError(res) ? -1 : (Int)result;
+#  else
    SysRes res = VG_(do_syscall3)(__NR_lseek, fd, off, whence);
    return sr_isError(res) ? -1 : sr_Res(res);
+#  endif
 }
 
 /* Get the dev, inode and mode info for a file descriptor, if

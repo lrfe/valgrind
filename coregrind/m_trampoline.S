@@ -1918,6 +1918,44 @@ VG_(amd64_solaris_REDIR_FOR_strlen):
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
 
+
+/*---------------- or1k-linux ----------------*/
+#elif defined(VGP_or1k_linux)
+
+#	define UD_4      .word 0xFFFFFFFF
+#	define UD_16     UD_4    ; UD_4    ; UD_4    ; UD_4
+#	define UD_64     UD_16   ; UD_16   ; UD_16   ; UD_16
+#	define UD_256    UD_64   ; UD_64   ; UD_64   ; UD_64
+#	define UD_1024   UD_256  ; UD_256  ; UD_256  ; UD_256
+#	define UD_PAGE   UD_1024 ; UD_1024
+
+	/* a leading page of unexecutable code */
+	UD_PAGE
+
+.global VG_(trampoline_stuff_start)
+VG_(trampoline_stuff_start):
+
+.global VG_(or1k_linux_SUBST_FOR_rt_sigreturn)
+.type   VG_(or1k_linux_SUBST_FOR_rt_sigreturn), @function
+VG_(or1k_linux_SUBST_FOR_rt_sigreturn):
+	l.ori r11, r0, __NR_rt_sigreturn
+	l.sys 1
+	l.nop
+.size VG_(or1k_linux_SUBST_FOR_rt_sigreturn), .-VG_(or1k_linux_SUBST_FOR_rt_sigreturn)
+
+.global VG_(trampoline_stuff_end)
+VG_(trampoline_stuff_end):
+
+	/* and a trailing page of unexecutable code */
+	UD_PAGE
+
+#	undef UD_4
+#	undef UD_16
+#	undef UD_64
+#	undef UD_256
+#	undef UD_1024
+#	undef UD_PAGE
+
 /*---------------- unknown ----------------*/
 #else
 #  error Unknown platform

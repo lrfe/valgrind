@@ -597,6 +597,13 @@ static void fill_prstatus(const ThreadState *tst,
    regs->gp_elr   = arch->vex.guest_PC;
    regs->gp_spsr  = LibVEX_GuestARM64_get_nzcv( &arch->vex ); /* is this correct? */
 
+#elif defined(VGP_or1k_linux)
+   { Int i;
+     for (i = 0; i < 32; i++)
+        regs->gpr[i] = (&arch->vex.guest_r0)[i];
+     regs->pc = arch->vex.guest_PC;
+     regs->sr = 0;
+   }
 
 #else
 #  error Unknown ELF platform
@@ -804,6 +811,9 @@ static void fill_fpu(const ThreadState *tst, vki_elf_fpregset_t *fpu)
    fpu->fp_q[31] = *(const __uint128_t*)arch->vex.guest_Q31;
    fpu->fp_sr     = *(const vki_uint32_t*)arch->vex.guest_QCFLAG;
    fpu->fp_cr     = arch->vex.guest_FPCR;
+
+#elif defined(VGP_or1k_linux)
+   /* or1k has no FPU state to dump. */
 
 #else
 #  error Unknown ELF platform

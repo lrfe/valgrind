@@ -284,6 +284,25 @@
         (srP)->misc.RISCV64.r_fp = fp;                    \
         (srP)->misc.RISCV64.r_ra = ra;                    \
       }
+#elif defined(VGP_or1k_linux)
+#  define GET_STARTREGS(srP)                              \
+      { UInt pc = 0, sp, fp, ra;                          \
+      __asm__ volatile(                                   \
+          "l.ori %3, r9, 0\n\t"   /* ra = r9 (saved) */ \
+          "l.ori %1, r1, 0\n\t"   /* sp = r1 */         \
+          "l.ori %2, r2, 0\n\t"   /* fp = r2 */         \
+          "l.jal 1f\n\t"          /* r9 = pc */         \
+          "l.nop\n\t"                                   \
+          "1:\n\t"                                      \
+          "l.ori %0, r9, 0\n\t"   /* pc */              \
+          "l.ori r9, %3, 0\n\t"   /* restore r9 */      \
+          : "=r" (pc), "=r" (sp), "=r" (fp), "=r" (ra)    \
+          : : "r9" );                                     \
+        (srP)->r_pc = (ULong)pc;                          \
+        (srP)->r_sp = (ULong)sp;                          \
+        (srP)->misc.OR1K.r_fp = (ULong)fp;                \
+        (srP)->misc.OR1K.r_ra = (ULong)ra;                \
+      }
 #else
 #  error Unknown platform
 #endif

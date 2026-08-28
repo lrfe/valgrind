@@ -2070,6 +2070,10 @@ void ML_(read_debuginfo_dwarf1) (
 #  define FP_REG         8
 #  define SP_REG         2
 #  define RA_REG_DEFAULT 1
+#elif defined(VGP_or1k_linux)
+#  define FP_REG         2
+#  define SP_REG         1
+#  define RA_REG_DEFAULT 9
 #else
 #  error "Unknown platform"
 #endif
@@ -2799,9 +2803,9 @@ static Bool summarise_context(/*OUT*/Addr* base,
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
    /* These don't use CFI based unwinding (is that really true?) */
 
-#  elif defined(VGA_riscv64)
+#  elif defined(VGA_riscv64) || defined(VGA_or1k)
 
-   /* --- entire tail of this fn specialised for riscv64 --- */
+   /* --- entire tail of this fn specialised for riscv64/or1k --- */
 
    SUMMARISE_HOW(si_m->ra_how, si_m->ra_off, ctxs->reg[ctx->ra_reg]);
    SUMMARISE_HOW(si_m->fp_how, si_m->fp_off, ctxs->reg[FP_REG]);
@@ -2921,7 +2925,8 @@ static Int copy_convert_CfiExpr_tree ( XArray*        dstxa,
          if (dwreg == srcuc->ra_reg)
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_ARM64_X30 );
 #        elif defined(VGA_ppc32) || defined(VGA_ppc64be) \
-            || defined(VGA_ppc64le) || defined(VGA_riscv64)
+            || defined(VGA_ppc64le) || defined(VGA_riscv64) \
+            || defined(VGA_or1k)
 #        else
 #           error "Unknown arch"
 #        endif

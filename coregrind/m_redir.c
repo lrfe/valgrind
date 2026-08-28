@@ -1766,6 +1766,9 @@ void VG_(redir_initialise) ( void )
       );
    }
 
+#  elif defined(VGP_or1k_linux)
+   /* No hardwired ld.so redirections for the initial or1k port. */
+
 #  elif defined(VGP_x86_solaris)
    /* If we're using memcheck, use these intercepts right from
       the start, otherwise ld.so makes a lot of noise. */

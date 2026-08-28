@@ -1306,7 +1306,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    is_ro_map = False;
 
 #  if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_mips32) \
-      || defined(VGA_mips64) || defined(VGA_nanomips)
+      || defined(VGA_mips64) || defined(VGA_nanomips) || defined(VGA_or1k)
    is_rx_map = seg->hasR && seg->hasX;
    is_rw_map = seg->hasR && seg->hasW;
 #  elif defined(VGA_amd64) || defined(VGA_ppc64be) || defined(VGA_ppc64le)  \
@@ -3163,7 +3163,8 @@ UWord evalCfiExpr ( const XArray* exprs, Int ix,
             case Creg_ARM64_X30: return eec->uregs->x30;
             case Creg_ARM64_X29: return eec->uregs->x29;
 #           elif defined(VGA_ppc32) || defined(VGA_ppc64be) \
-               || defined(VGA_ppc64le) || defined(VGP_riscv64_linux)
+               || defined(VGA_ppc64le) || defined(VGP_riscv64_linux) \
+               || defined(VGA_or1k)
 #           else
 #             error "Unsupported arch"
 #           endif
@@ -3444,7 +3445,7 @@ static Addr compute_cfa ( const D3UnwindRegs* uregs,
    case CFIC_ARM64_X29REL:
       cfa = cfsi_m->cfa_off + uregs->x29;
       break;
-#     elif defined(VGP_riscv64_linux)
+#     elif defined(VGP_riscv64_linux) || defined(VGP_or1k_linux)
       case CFIC_IA_SPREL:
          cfa = cfsi_m->cfa_off + uregs->sp;
          break;
@@ -3607,7 +3608,7 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGA_arm64)
    ipHere = uregsHere->pc;
-#  elif defined(VGP_riscv64_linux)
+#  elif defined(VGP_riscv64_linux) || defined(VGP_or1k_linux)
    ipHere = uregsHere->pc;
 #  else
 #    error "Unknown arch"
@@ -3746,7 +3747,7 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    COMPUTE(uregsPrev.sp,  uregsHere->sp,  cfsi_m->sp_how,  cfsi_m->sp_off);
    COMPUTE(uregsPrev.x30, uregsHere->x30, cfsi_m->x30_how, cfsi_m->x30_off);
    COMPUTE(uregsPrev.x29, uregsHere->x29, cfsi_m->x29_how, cfsi_m->x29_off);
-#  elif defined(VGP_riscv64_linux)
+#  elif defined(VGP_riscv64_linux) || defined(VGP_or1k_linux)
    /* Compute register values in the caller's frame. Notice that the previous
       pc is equal to the previous ra and is calculated as such. The previous ra
       is however set to 0 here as this helps to promptly fail cases where an

@@ -925,7 +925,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
          we can use the statfs call for that, except on nanomips
          (which also doesn't have a sys_fstatfs syswrap).
          See https://bugs.kde.org/show_bug.cgi?id=317127 */
-#if !defined(VGP_nanomips_linux)
+#if !defined(VGP_nanomips_linux) && !defined(VGP_or1k_linux)
       struct vki_statfs statfs = {0};
       SysRes res = VG_(do_syscall2)(__NR_statfs, (UWord)filename,
                                     (UWord)&statfs);

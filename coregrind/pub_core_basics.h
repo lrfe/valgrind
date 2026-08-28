@@ -108,6 +108,10 @@ typedef
             ULong r_fp; /* x8 */
             ULong r_ra; /* x1 */
          } RISCV64;
+         struct {
+            UInt r_fp; /* r2 */
+            UInt r_ra; /* r9 */
+         } OR1K;
       } misc;
    }
    UnwindStartRegs;

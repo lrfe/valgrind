@@ -656,6 +656,18 @@ VgHashTable *ht_sigchld_ignore = NULL;
         (srP)->misc.RISCV64.r_ra = (uc)->uc_mcontext.sc_regs.ra; \
       }
 
+#elif defined(VGP_or1k_linux)
+#  define VG_UCONTEXT_INSTR_PTR(uc)       ((UWord)((uc)->uc_mcontext.regs.pc))
+#  define VG_UCONTEXT_STACK_PTR(uc)       ((UWord)((uc)->uc_mcontext.regs.gpr[1]))
+#  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                               \
+      VG_(mk_SysRes_or1k_linux)( (uc)->uc_mcontext.regs.gpr[11] )
+#  define VG_UCONTEXT_TO_UnwindStartRegs(srP, uc)                \
+      { (srP)->r_pc = (uc)->uc_mcontext.regs.pc;                 \
+        (srP)->r_sp = (uc)->uc_mcontext.regs.gpr[1];             \
+        (srP)->misc.OR1K.r_fp = (uc)->uc_mcontext.regs.gpr[2];   \
+        (srP)->misc.OR1K.r_ra = (uc)->uc_mcontext.regs.gpr[9];   \
+      }
+
 #elif defined(VGP_x86_solaris)
 #  define VG_UCONTEXT_INSTR_PTR(uc)       ((Addr)(uc)->uc_mcontext.gregs[VKI_EIP])
 #  define VG_UCONTEXT_STACK_PTR(uc)       ((Addr)(uc)->uc_mcontext.gregs[VKI_UESP])
@@ -1116,6 +1128,15 @@ extern void my_sigreturn(void);
    ".globl my_sigreturn\n" \
    "my_sigreturn:\n" \
    "udf #0\n" \
+   ".previous\n"
+#elif defined(VGP_or1k_linux)
+# define _MY_SIGRETURN(name) \
+   ".text\n" \
+   ".globl my_sigreturn\n" \
+   "my_sigreturn:\n" \
+   "   l.ori r11, r0, " #name "\n" \
+   "   l.sys 1\n" \
+   "   l.nop\n" \
    ".previous\n"
 #else
 #  error Unknown platform

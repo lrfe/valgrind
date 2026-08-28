@@ -215,6 +215,13 @@ SysRes VG_(mk_SysRes_riscv64_linux) ( Long val ) {
    return res;
 }
 
+SysRes VG_(mk_SysRes_or1k_linux) ( Long val ) {
+   SysRes res;
+   res._isError = val >= -4095 && val <= -1;
+   res._val = res._isError ? (ULong)(-val) : (ULong)val;
+   return res;
+}
+
 /* Generic constructors. */
 SysRes VG_(mk_SysRes_Success) ( UWord res ) {
    SysRes r;
@@ -1195,6 +1202,24 @@ __asm__ (
 ".previous\n"
 );
 
+#elif defined(VGP_or1k_linux)
+/* Calling convention: syscall args a1..a6 in r3..r8, syscall number in
+   r11, result in r11.  do_syscall_WRK receives a1..a6 in r3..r8 and the
+   syscall number as the 7th argument, on the stack at 0(r1). */
+extern UWord do_syscall_WRK ( UWord a1, UWord a2, UWord a3,
+                              UWord a4, UWord a5, UWord a6,
+                              UWord syscall_no );
+asm(
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"   l.lwz r11, 0(r1)\n"     /* r11 = syscall number (7th arg) */
+"   l.sys 1\n"
+"   l.jr  r9\n"             /* return; result already in r11 */
+"   l.nop\n"
+".previous\n"
+);
+
 #else
 #  error Unknown platform
 #endif
@@ -1359,6 +1384,9 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
 #  elif defined(VGP_riscv64_linux)
    UWord val = do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
    return VG_(mk_SysRes_riscv64_linux)(val);
+#  elif defined(VGP_or1k_linux)
+   UWord val = do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
+   return VG_(mk_SysRes_or1k_linux)(val);
 
 #  elif defined(VGP_x86_solaris)
    UInt val, val2, err = False;
