@@ -183,6 +183,12 @@ static Bool dis_simple ( UInt insn )
          return True;
       }
 
+      case 0x1b:                                  /* l.lwa rD,imm(rA) (load-linked) */
+         /* single-threaded guest: a plain word load is enough. */
+         DIP("l.lwa r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), load32(memEA(insn)));
+         return True;
+
       case 0x21:                                  /* l.lwz rD,imm(rA) */
          DIP("l.lwz r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
          putIReg(rD(insn), load32(memEA(insn)));
@@ -207,6 +213,15 @@ static Bool dis_simple ( UInt insn )
          DIP("l.lhs r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
          putIReg(rD(insn), unop(Iop_16Sto32, load16(memEA(insn))));
          return True;
+
+      case 0x33: {                                /* l.swa imm(rA),rB (store-cond.) */
+         /* single-threaded guest: the store always succeeds, so set SR[F]. */
+         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
+         DIP("l.swa %d(r%u),r%u\n", (Int)splitImm(insn), rA(insn), rB(insn));
+         stmt(IRStmt_Store(OR1K_ENDNESS, ea, getIReg(rB(insn))));
+         putSR_F(mkU32(1));
+         return True;
+      }
 
       case 0x35: {                                /* l.sw imm(rA),rB */
          IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
