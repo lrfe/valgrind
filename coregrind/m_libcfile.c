@@ -1181,16 +1181,23 @@ SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset )
                           0, // Padding needed on PPC32
                           0, offset); // Big endian long long
    return res;
-#  elif (defined(VGP_mips32_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux)) \
+#  elif defined(VGP_or1k_linux)
+   /* or1k passes the 64-bit offset in an aligned register pair (r6:r7) with
+      no MIPS-style padding word; big-endian puts the high half first. */
+   vg_assert(sizeof(OffT) == 4);
+   res = VG_(do_syscall5)(__NR_pread64, fd, (UWord)buf, count,
+                          0, offset); // Big endian long long
+   return res;
+#  elif (defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)) \
      && (VKI_LITTLE_ENDIAN)
    vg_assert(sizeof(OffT) == 4);
-   res = VG_(do_syscall6)(__NR_pread64, fd, (UWord)buf, count, 
+   res = VG_(do_syscall6)(__NR_pread64, fd, (UWord)buf, count,
                           0, offset, 0);
    return res;
-#  elif (defined(VGP_mips32_linux) || defined(VGP_nanomips_linux) || defined(VGP_or1k_linux)) \
+#  elif (defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)) \
      && (VKI_BIG_ENDIAN)
    vg_assert(sizeof(OffT) == 4);
-   res = VG_(do_syscall6)(__NR_pread64, fd, (UWord)buf, count, 
+   res = VG_(do_syscall6)(__NR_pread64, fd, (UWord)buf, count,
                           0, 0, offset);
    return res;
 #  elif defined(VGP_amd64_linux) || defined(VGP_s390x_linux) \
