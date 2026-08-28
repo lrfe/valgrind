@@ -60,6 +60,7 @@ static Bool fitsU16 ( UInt c ) { return c <= 0xFFFF; }
 
 static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e );
 static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard );
+static HReg condTo01 ( ISelEnv* env, IRExpr* guard );   /* I1 -> 0/1 in a reg */
 
 /*--- constant materialization ---*/
 
@@ -106,8 +107,15 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
       }
 
       case Iex_Const: {
-         vassert(e->Iex.Const.con->tag == Ico_U32);
-         return iselConst(env, e->Iex.Const.con->Ico.U32);
+         UInt v;
+         switch (e->Iex.Const.con->tag) {
+            case Ico_U32: v = e->Iex.Const.con->Ico.U32;        break;
+            case Ico_U16: v = e->Iex.Const.con->Ico.U16;        break;
+            case Ico_U8:  v = e->Iex.Const.con->Ico.U8;         break;
+            case Ico_U1:  v = e->Iex.Const.con->Ico.U1 ? 1 : 0; break;
+            default: vpanic("iselIntExpr_R(or1k): bad const type");
+         }
+         return iselConst(env, v);
       }
 
       case Iex_Load: {
@@ -125,12 +133,16 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
             case Iop_32to8: case Iop_32to16:
                return iselIntExpr_R(env, a);          /* low bits already there */
             case Iop_1Uto32: {
-               /* materialize the I1 into 0/1 via l.sf* + l.cmov. */
-               iselCondCode(env, a);                  /* sets SR[F] = cond */
+               /* materialize the I1 into 0/1 via l.sf* + l.cmov, honouring
+                  the F/NF sense that iselCondCode reports. */
+               OR1KCondCode c = iselCondCode(env, a);
                HReg one = iselConst(env, 1);
                HReg dst = newVRegI(env);
-               addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
-               return dst;                            /* dst = F ? 1 : 0 */
+               if (c == OR1Kcc_F)                     /* dst = F  ? 1 : 0 */
+                  addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+               else                                   /* dst = !F ? 1 : 0 */
+                  addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, one));
+               return dst;
             }
             case Iop_8Uto32: case Iop_8Sto32:
             case Iop_16Uto32: case Iop_16Sto32: {
@@ -209,6 +221,20 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
          return dst;
       }
 
+      case Iex_ITE: {
+         /* Compute both arms first; iselCondCode is done last so the
+            arms' compares can't clobber SR[F] before the l.cmov. */
+         HReg rt  = iselIntExpr_R(env, e->Iex.ITE.iftrue);
+         HReg rf  = iselIntExpr_R(env, e->Iex.ITE.iffalse);
+         OR1KCondCode c = iselCondCode(env, e->Iex.ITE.cond);
+         HReg dst = newVRegI(env);
+         if (c == OR1Kcc_F)                        /* dst = F  ? rt : rf */
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, rt, rf));
+         else                                      /* dst = !F ? rt : rf */
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, rf, rt));
+         return dst;
+      }
+
       default:
          break;
    }
@@ -222,6 +248,23 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
 
 static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
 {
+   /* Not1(x): compute x's flag and return the inverted sense. */
+   if (guard->tag == Iex_Unop && guard->Iex.Unop.op == Iop_Not1) {
+      OR1KCondCode c = iselCondCode(env, guard->Iex.Unop.arg);
+      return c == OR1Kcc_F ? OR1Kcc_NF : OR1Kcc_F;
+   }
+   /* And1/Or1: materialize both operands as 0/1 and test the combination.
+      A single SR[F] can't hold a two-condition combination directly. */
+   if (guard->tag == Iex_Binop
+       && (guard->Iex.Binop.op == Iop_And1 || guard->Iex.Binop.op == Iop_Or1)) {
+      HReg rx = condTo01(env, guard->Iex.Binop.arg1);
+      HReg ry = condTo01(env, guard->Iex.Binop.arg2);
+      HReg t  = newVRegI(env);
+      addInstr(env, OR1KInstr_Alu(guard->Iex.Binop.op == Iop_And1
+                                     ? OR1Kalu_AND : OR1Kalu_OR, t, rx, ry));
+      addInstr(env, OR1KInstr_CmpI(1/*ne*/, t, 0));   /* F <- (t != 0) */
+      return OR1Kcc_F;
+   }
    if (guard->tag == Iex_Binop) {
       UInt code; Bool ok = True;
       switch (guard->Iex.Binop.op) {
@@ -250,6 +293,19 @@ static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
    return OR1Kcc_F;
 }
 
+/* Materialize an Ity_I1 condition as a 0/1 value in a fresh register. */
+static HReg condTo01 ( ISelEnv* env, IRExpr* guard )
+{
+   OR1KCondCode c = iselCondCode(env, guard);
+   HReg one = iselConst(env, 1);
+   HReg dst = newVRegI(env);
+   if (c == OR1Kcc_F)
+      addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+   else
+      addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, one));
+   return dst;
+}
+
 /*--- statements ---*/
 
 static void iselStmt ( ISelEnv* env, IRStmt* stmt )
@@ -271,10 +327,13 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          HReg dst = lookupIRTemp(env, stmt->Ist.WrTmp.tmp);
          IRExpr* data = stmt->Ist.WrTmp.data;
          if (typeOfIRExpr(env->type_env, data) == Ity_I1) {
-            /* a condition temp: materialize it as 0/1. */
-            iselCondCode(env, data);
+            /* a condition temp: materialize it as 0/1, honouring F/NF. */
+            OR1KCondCode c = iselCondCode(env, data);
             HReg one = iselConst(env, 1);
-            addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+            if (c == OR1Kcc_F)
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
+            else
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, one));
          } else {
             HReg r = iselIntExpr_R(env, data);
             addInstr(env, (OR1KInstr*)genMove_OR1K(r, dst, False));
