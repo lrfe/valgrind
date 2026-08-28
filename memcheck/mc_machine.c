@@ -1490,6 +1490,60 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    tl_assert(0);
 #  undef GOF
 
+#  elif defined(VGA_or1k)
+
+#  define GOF(_fieldname) \
+      (offsetof(VexGuestOR1KState,guest_##_fieldname))
+
+   Int  o  = offset;
+   Int  sz = szB;
+   tl_assert(sz > 0);
+   tl_assert(host_is_little_endian());
+
+   if (o == GOF(r0) && sz == 4) return -1;   /* r0 is always zero/defined */
+   if (o == GOF(r1) && sz == 4) return o;
+   if (o == GOF(r2) && sz == 4) return o;
+   if (o == GOF(r3) && sz == 4) return o;
+   if (o == GOF(r4) && sz == 4) return o;
+   if (o == GOF(r5) && sz == 4) return o;
+   if (o == GOF(r6) && sz == 4) return o;
+   if (o == GOF(r7) && sz == 4) return o;
+   if (o == GOF(r8) && sz == 4) return o;
+   if (o == GOF(r9) && sz == 4) return o;
+   if (o == GOF(r10) && sz == 4) return o;
+   if (o == GOF(r11) && sz == 4) return o;
+   if (o == GOF(r12) && sz == 4) return o;
+   if (o == GOF(r13) && sz == 4) return o;
+   if (o == GOF(r14) && sz == 4) return o;
+   if (o == GOF(r15) && sz == 4) return o;
+   if (o == GOF(r16) && sz == 4) return o;
+   if (o == GOF(r17) && sz == 4) return o;
+   if (o == GOF(r18) && sz == 4) return o;
+   if (o == GOF(r19) && sz == 4) return o;
+   if (o == GOF(r20) && sz == 4) return o;
+   if (o == GOF(r21) && sz == 4) return o;
+   if (o == GOF(r22) && sz == 4) return o;
+   if (o == GOF(r23) && sz == 4) return o;
+   if (o == GOF(r24) && sz == 4) return o;
+   if (o == GOF(r25) && sz == 4) return o;
+   if (o == GOF(r26) && sz == 4) return o;
+   if (o == GOF(r27) && sz == 4) return o;
+   if (o == GOF(r28) && sz == 4) return o;
+   if (o == GOF(r29) && sz == 4) return o;
+   if (o == GOF(r30) && sz == 4) return o;
+   if (o == GOF(r31) && sz == 4) return o;
+   if (o == GOF(SR_F)  && sz == 4) return o;
+   if (o == GOF(SR_CY) && sz == 4) return o;
+   if (o == GOF(SR_OV) && sz == 4) return o;
+   if (o == GOF(MACHI) && sz == 4) return o;
+   if (o == GOF(MACLO) && sz == 4) return o;
+   if (o == GOF(PC) && sz == 4) return -1;
+
+   VG_(printf)("MC_(get_otrack_shadow_offset)(or1k)(off=%d,sz=%d)\n",
+               offset,szB);
+   tl_assert(0);
+#  undef GOF
+
 #  else
 #    error "FIXME: not implemented for this architecture"
 #  endif
@@ -1614,6 +1668,12 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
    /* ------------------- riscv64 ------------------- */
 #  elif defined(VGA_riscv64)
    VG_(printf)("get_reg_array_equiv_int_type(riscv64): unhandled: ");
+   ppIRRegArray(arr);
+   VG_(printf)("\n");
+   tl_assert(0);
+
+#  elif defined(VGA_or1k)
+   VG_(printf)("get_reg_array_equiv_int_type(or1k): unhandled: ");
    ppIRRegArray(arr);
    VG_(printf)("\n");
    tl_assert(0);

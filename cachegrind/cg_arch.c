@@ -467,6 +467,13 @@ configure_caches(cache_t *I1c, cache_t *D1c, cache_t *LLc,
    *D1c = (cache_t) {   32768,  8, 64 };
    *LLc = (cache_t) { 2097152, 16, 64 };
 
+#elif defined(VGA_or1k)
+
+   // Generic default cache configuration for or1k.
+   *I1c = (cache_t) {  16384,  2, 32 };
+   *D1c = (cache_t) {  16384,  2, 32 };
+   *LLc = (cache_t) { 524288, 16, 64 };
+
 #else
 
 #error "Unknown arch"

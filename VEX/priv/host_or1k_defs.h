@@ -102,7 +102,8 @@ typedef enum { OR1Kcc_AL, OR1Kcc_F, OR1Kcc_NF } OR1KCondCode;
 typedef enum {
    OR1Kin_Alu, OR1Kin_AluI, OR1Kin_ShiftI, OR1Kin_MovHi,
    OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext,
-   OR1Kin_XDirect, OR1Kin_XIndir, OR1Kin_XAssisted
+   OR1Kin_XDirect, OR1Kin_XIndir, OR1Kin_XAssisted,
+   OR1Kin_EvCheck, OR1Kin_ProfInc
 } OR1KInstrTag;
 
 typedef struct {
@@ -120,6 +121,12 @@ typedef struct {
       struct { UInt dstGA; Int pcOff; OR1KCondCode cond; } XDirect;
       struct { HReg dstGA; Int pcOff; OR1KCondCode cond; } XIndir;
       struct { HReg dstGA; Int pcOff; OR1KCondCode cond; IRJumpKind jk; } XAssisted;
+      /* Event check: decrement the dispatch counter at offCounter(r30); if it
+         goes negative jump to the address held at offFailAddr(r30). */
+      struct { Int offCounter; Int offFailAddr;         } EvCheck;
+      /* Profile increment: a fixed template patched later with the counter
+         address by patchProfInc_OR1K(). */
+      struct { /* empty */                              } ProfInc;
    } OR1Kin;
 } OR1KInstr;
 
@@ -135,11 +142,36 @@ extern OR1KInstr* OR1KInstr_Ext    ( OR1KExtOp, HReg dst, HReg src );
 extern OR1KInstr* OR1KInstr_XDirect   ( UInt dstGA, Int pcOff, OR1KCondCode );
 extern OR1KInstr* OR1KInstr_XIndir    ( HReg dstGA, Int pcOff, OR1KCondCode );
 extern OR1KInstr* OR1KInstr_XAssisted ( HReg dstGA, Int pcOff, OR1KCondCode, IRJumpKind );
+extern OR1KInstr* OR1KInstr_EvCheck   ( Int offCounter, Int offFailAddr );
+extern OR1KInstr* OR1KInstr_ProfInc   ( void );
 
 extern void ppOR1KInstr ( const OR1KInstr* i );
 
-/* encode one instruction into buf (4 bytes, MSB-first); returns 4. */
-extern Int emit_OR1KInstr ( UChar* buf, Int nbuf, const OR1KInstr* i );
+/* Encode one instruction into buf; returns the number of bytes emitted. */
+extern Int emit_OR1KInstr ( /*MB_MOD*/Bool* is_profInc,
+                            UChar* buf, Int nbuf, const OR1KInstr* i,
+                            Bool mode64,
+                            const VexArchInfo* archinfo_host,
+                            const void* disp_cp_chain_me_to_slowEP,
+                            const void* disp_cp_chain_me_to_fastEP,
+                            const void* disp_cp_xindir,
+                            const void* disp_cp_xassisted );
+
+/* Bytes of code emitted for an OR1Kin_EvCheck. */
+extern Int evCheckSzB_OR1K ( void );
+
+/* Chain / unchain an XDirect jump, and patch a ProfInc counter address. */
+extern VexInvalRange chainXDirect_OR1K ( VexEndness endness_host,
+                                         void* place_to_chain,
+                                         const void* disp_cp_chain_me_EXPECTED,
+                                         const void* place_to_jump_to );
+extern VexInvalRange unchainXDirect_OR1K ( VexEndness endness_host,
+                                           void* place_to_unchain,
+                                           const void* place_to_jump_to_EXPECTED,
+                                           const void* disp_cp_chain_me );
+extern VexInvalRange patchProfInc_OR1K ( VexEndness endness_host,
+                                         void* place_to_patch,
+                                         const ULong* location_of_counter );
 
 /* r30 is the host-side guest-state pointer; r0 is hardwired zero.  Both */
 /* are reserved from allocation. */

@@ -26,6 +26,7 @@ pkginclude_HEADERS = \
 	pub/libvex_guest_arm64_sysregs.h \
 	pub/libvex_guest_s390x.h \
 	pub/libvex_guest_mips32.h \
+	pub/libvex_guest_or1k.h \
 	pub/libvex_guest_mips64.h \
 	pub/libvex_guest_riscv64.h \
 	pub/libvex_s390x_common.h \
@@ -51,6 +52,7 @@ noinst_HEADERS = \
 	priv/guest_arm64_defs.h \
 	priv/guest_s390_defs.h \
 	priv/guest_mips_defs.h \
+	priv/guest_or1k_defs.h \
 	priv/mips_defs.h \
 	priv/guest_nanomips_defs.h \
 	priv/guest_riscv64_defs.h \
@@ -69,6 +71,7 @@ noinst_HEADERS = \
 	priv/s390_disasm.h \
 	priv/s390_defs.h \
 	priv/host_mips_defs.h \
+	priv/host_or1k_defs.h \
 	priv/host_nanomips_defs.h \
 	priv/common_nanomips_defs.h \
 	priv/host_riscv64_defs.h \
@@ -158,8 +161,10 @@ LIBVEX_SOURCES_COMMON = \
 	priv/guest_s390_helpers.c \
 	priv/guest_s390_toIR.c \
 	priv/guest_mips_helpers.c \
+	priv/guest_or1k_helpers.c \
 	priv/guest_mipsdsp_toIR.c \
 	priv/guest_mips_toIR.c \
+	priv/guest_or1k_toIR.c \
 	priv/guest_nanomips_helpers.c \
 	priv/guest_nanomips_toIR.c \
 	priv/guest_riscv64_helpers.c \
@@ -185,8 +190,10 @@ LIBVEX_SOURCES_COMMON = \
 	priv/host_s390_defs.c \
 	priv/host_s390_isel.c \
 	priv/host_mips_defs.c \
+	priv/host_or1k_defs.c \
 	priv/host_nanomips_defs.c \
 	priv/host_mips_isel.c \
+	priv/host_or1k_isel.c \
 	priv/host_nanomips_isel.c \
 	priv/host_riscv64_defs.c \
 	priv/host_riscv64_isel.c \

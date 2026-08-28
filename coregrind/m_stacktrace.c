@@ -1551,7 +1551,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
 /* ------------------------ riscv64 ------------------------- */
 
-#if defined(VGP_riscv64_linux)
+#if defined(VGP_riscv64_linux) || defined(VGP_or1k_linux)
 
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
@@ -1571,8 +1571,13 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    D3UnwindRegs uregs;
    uregs.pc = startRegs->r_pc;
    uregs.sp = startRegs->r_sp;
+#  if defined(VGP_or1k_linux)
+   uregs.fp = startRegs->misc.OR1K.r_fp;
+   uregs.ra = startRegs->misc.OR1K.r_ra;
+#  else
    uregs.fp = startRegs->misc.RISCV64.r_fp;
    uregs.ra = startRegs->misc.RISCV64.r_ra;
+#  endif
    Addr fp_min = uregs.sp - VG_STACK_REDZONE_SZB;
 
    /* Snaffle IPs from the client's stack into ips[0 .. max_n_ips-1],

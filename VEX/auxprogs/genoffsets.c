@@ -54,6 +54,7 @@
 #include "../pub/libvex_guest_mips32.h"
 #include "../pub/libvex_guest_mips64.h"
 #include "../pub/libvex_guest_riscv64.h"
+#include "../pub/libvex_guest_or1k.h"
 
 #define VG_STRINGIFZ(__str)  #__str
 #define VG_STRINGIFY(__str)  VG_STRINGIFZ(__str)
@@ -330,6 +331,41 @@ void foo ( void )
    GENOFFSET(RISCV64,riscv64,f30);
    GENOFFSET(RISCV64,riscv64,f31);
    GENOFFSET(RISCV64,riscv64,fcsr);
+
+   // OR1K
+   GENOFFSET(OR1K,or1k,r0);
+   GENOFFSET(OR1K,or1k,r1);
+   GENOFFSET(OR1K,or1k,r2);
+   GENOFFSET(OR1K,or1k,r3);
+   GENOFFSET(OR1K,or1k,r4);
+   GENOFFSET(OR1K,or1k,r5);
+   GENOFFSET(OR1K,or1k,r6);
+   GENOFFSET(OR1K,or1k,r7);
+   GENOFFSET(OR1K,or1k,r8);
+   GENOFFSET(OR1K,or1k,r9);
+   GENOFFSET(OR1K,or1k,r10);
+   GENOFFSET(OR1K,or1k,r11);
+   GENOFFSET(OR1K,or1k,r12);
+   GENOFFSET(OR1K,or1k,r13);
+   GENOFFSET(OR1K,or1k,r14);
+   GENOFFSET(OR1K,or1k,r15);
+   GENOFFSET(OR1K,or1k,r16);
+   GENOFFSET(OR1K,or1k,r17);
+   GENOFFSET(OR1K,or1k,r18);
+   GENOFFSET(OR1K,or1k,r19);
+   GENOFFSET(OR1K,or1k,r20);
+   GENOFFSET(OR1K,or1k,r21);
+   GENOFFSET(OR1K,or1k,r22);
+   GENOFFSET(OR1K,or1k,r23);
+   GENOFFSET(OR1K,or1k,r24);
+   GENOFFSET(OR1K,or1k,r25);
+   GENOFFSET(OR1K,or1k,r26);
+   GENOFFSET(OR1K,or1k,r27);
+   GENOFFSET(OR1K,or1k,r28);
+   GENOFFSET(OR1K,or1k,r29);
+   GENOFFSET(OR1K,or1k,r30);
+   GENOFFSET(OR1K,or1k,r31);
+   GENOFFSET(OR1K,or1k,PC);
 }
 
 /*--------------------------------------------------------------------*/

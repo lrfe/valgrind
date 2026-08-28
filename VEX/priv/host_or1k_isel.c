@@ -327,6 +327,13 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    for (i = 0; i < env.n_vregmap; i++)
       env.vregmap[i] = mkHReg(True, HRcInt32, 0, env.vreg_ctr++);
 
+   /* Every superblock opens with a dispatch-counter check. */
+   addInstr(&env, OR1KInstr_EvCheck(offs_evc_counter, offs_evc_fa));
+
+   /* Optionally a profiler increment (used with --profile-flags). */
+   if (addProfInc)
+      addInstr(&env, OR1KInstr_ProfInc());
+
    for (i = 0; i < bb->stmts_used; i++)
       iselStmt(&env, bb->stmts[i]);
 
