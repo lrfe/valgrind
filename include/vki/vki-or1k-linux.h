@@ -110,18 +110,19 @@
                                                          of growsdown vma */
 #define VKI_PROT_GROWSUP     0x2000000 /* mprotect flag: extend change to end
                                                          of growsup vma */
+/* or1k uses the asm-generic mmap flag layout (mman-common.h/mman.h). */
 #define VKI_MAP_SHARED       0x01      /* Share changes */
 #define VKI_MAP_PRIVATE      0x02      /* Changes are private */
 #define VKI_MAP_TYPE         0x0f      /* Mask for type of mapping */
 #define VKI_MAP_FIXED        0x10      /* Interpret addr exactly */
-#define VKI_MAP_ANONYMOUS    0x0800    /* don't use a file */
-#define VKI_MAP_GROWSDOWN    0x1000    /* stack-like segment */
-#define VKI_MAP_DENYWRITE    0x2000    /* ETXTBSY */
-#define VKI_MAP_EXECUTABLE   0x4000    /* mark it as an executable */
-#define VKI_MAP_LOCKED       0x8000    /* pages are locked */
-#define VKI_MAP_NORESERVE    0x0400    /* don't check for reservations */
-#define VKI_MAP_POPULATE     0x10000   /* populate (prefault) pagetables */
-#define VKI_MAP_NONBLOCK     0x20000   /* do not block on IO */
+#define VKI_MAP_ANONYMOUS    0x20      /* don't use a file */
+#define VKI_MAP_GROWSDOWN    0x0100    /* stack-like segment */
+#define VKI_MAP_DENYWRITE    0x0800    /* ETXTBSY */
+#define VKI_MAP_EXECUTABLE   0x1000    /* mark it as an executable */
+#define VKI_MAP_LOCKED       0x2000    /* pages are locked */
+#define VKI_MAP_NORESERVE    0x4000    /* don't check for reservations */
+#define VKI_MAP_POPULATE     0x8000    /* populate (prefault) pagetables */
+#define VKI_MAP_NONBLOCK     0x10000   /* do not block on IO */
 
 #define VKI_O_ACCMODE        03
 #define VKI_O_RDONLY         00
