@@ -313,7 +313,8 @@
 #define VKI_SHMDT            22
 #define VKI_SHMGET           23
 #define VKI_SHMCTL           24
-#define VKI_SHMLBA           0x40000
+/* or1k uses the asm-generic shmparam: SHMLBA == PAGE_SIZE. */
+#define VKI_SHMLBA           VKI_PAGE_SIZE
 
 #define VKI_EF_OR1K_ABI     0x0000F000
 #define VKI_EF_OR1K_ABI_P32 0x00001000
