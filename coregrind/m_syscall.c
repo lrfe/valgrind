@@ -1385,7 +1385,9 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
    UWord val = do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
    return VG_(mk_SysRes_riscv64_linux)(val);
 #  elif defined(VGP_or1k_linux)
-   UWord val = do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
+   /* Sign-extend the 32-bit result so a negative errno is recognised as an
+      error by VG_(mk_SysRes_or1k_linux) rather than a large positive value. */
+   Word val = (Word)do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
    return VG_(mk_SysRes_or1k_linux)(val);
 
 #  elif defined(VGP_x86_solaris)
