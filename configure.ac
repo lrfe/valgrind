@@ -364,6 +364,11 @@ case "${host_cpu}" in
        ARCH_MAX="riscv64"
        ;;
 
+     or1k)
+       AC_MSG_RESULT([ok (${host_cpu})])
+       ARCH_MAX="or1k"
+       ;;
+
      *) 
 	AC_MSG_RESULT([no (${host_cpu})])
 	AC_MSG_ERROR([Unsupported host architecture. Sorry])
@@ -1072,6 +1077,17 @@ case "$ARCH_MAX-$VGCONF_OS" in
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
         ;;
+     or1k-linux)
+        VGCONF_ARCH_PRI="or1k"
+        VGCONF_ARCH_SEC=""
+        VGCONF_PLATFORM_PRI_CAPS="OR1K_LINUX"
+        VGCONF_PLATFORM_SEC_CAPS=""
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
+        valt_load_address_sec_norml="0xUNSET"
+        valt_load_address_sec_inner="0xUNSET"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+        ;;
      x86-solaris)
         VGCONF_ARCH_PRI="x86"
         VGCONF_ARCH_SEC=""
@@ -1167,6 +1183,8 @@ AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_NANOMIPS,
                test x$VGCONF_PLATFORM_PRI_CAPS = xNANOMIPS_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_RISCV64,
                test x$VGCONF_PLATFORM_PRI_CAPS = xRISCV64_LINUX )
+AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_OR1K,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xOR1K_LINUX )
 
 # Set up VGCONF_PLATFORMS_INCLUDE_<platform>.  Either one or two of these
 # become defined.
@@ -1197,6 +1215,8 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS64_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_NANOMIPS_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xNANOMIPS_LINUX)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_OR1K_LINUX,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xOR1K_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_RISCV64_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xRISCV64_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_FREEBSD,
