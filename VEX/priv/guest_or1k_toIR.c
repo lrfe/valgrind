@@ -284,6 +284,14 @@ static Bool dis_simple ( UInt insn )
             DIP("l.mul r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
             putIReg(rD(insn), binop(Iop_Mul32, getIReg(rA(insn)), getIReg(rB(insn))));
             return True;
+         } else if (opc2 == 3 && opc3 == 0x9) {   /* l.div rD,rA,rB (signed) */
+            DIP("l.div r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+            putIReg(rD(insn), binop(Iop_DivS32, getIReg(rA(insn)), getIReg(rB(insn))));
+            return True;
+         } else if (opc2 == 3 && opc3 == 0xa) {   /* l.divu rD,rA,rB (unsigned) */
+            DIP("l.divu r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+            putIReg(rD(insn), binop(Iop_DivU32, getIReg(rA(insn)), getIReg(rB(insn))));
+            return True;
          }
          return False;
       }

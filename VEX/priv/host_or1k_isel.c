@@ -208,7 +208,9 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
             case Iop_And32: aop = OR1Kalu_AND; break;
             case Iop_Or32:  aop = OR1Kalu_OR;  break;
             case Iop_Xor32: aop = OR1Kalu_XOR; break;
-            case Iop_Mul32: aop = OR1Kalu_MUL; break;
+            case Iop_Mul32: aop = OR1Kalu_MUL;  break;
+            case Iop_DivS32: aop = OR1Kalu_DIVS; break;
+            case Iop_DivU32: aop = OR1Kalu_DIVU; break;
             case Iop_Shl32: aop = OR1Kalu_SLL; break;
             case Iop_Shr32: aop = OR1Kalu_SRL; break;
             case Iop_Sar32: aop = OR1Kalu_SRA; break;
