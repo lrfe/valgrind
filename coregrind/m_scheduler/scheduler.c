@@ -1860,6 +1860,9 @@ void VG_(nuke_all_threads_except) ( ThreadId me, VgSchedReturnCode src )
 #elif defined(VGA_riscv64)
 #  define VG_CLREQ_ARGS       guest_x14
 #  define VG_CLREQ_RET        guest_x13
+#elif defined(VGA_or1k)
+#  define VG_CLREQ_ARGS       guest_r12
+#  define VG_CLREQ_RET        guest_r11
 #else
 #  error Unknown arch
 #endif

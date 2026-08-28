@@ -319,6 +319,16 @@ static void run_a_thread_NORETURN ( Word tidW )
          : "r" (VgTs_Empty), "n" (__NR_exit), "m" (tst->os_state.exitcode)
          : "a7", "a0"
       );
+#elif defined(VGP_or1k_linux)
+      asm volatile (
+         "l.sw   %0, %1\n\t"       /* tst->status = VgTs_Empty */
+         "l.ori  r11, r0, %2\n\t"  /* r11 = __NR_exit */
+         "l.lwz  r3, %3\n\t"       /* r3 = exitcode */
+         "l.sys  1\n\t"
+         : "=m" (tst->status)
+         : "r" (VgTs_Empty), "n" (__NR_exit), "m" (tst->os_state.exitcode)
+         : "memory", "r11", "r3"
+      );
 #else
 # error Unknown platform
 #endif
@@ -551,6 +561,12 @@ static SysRes clone_new_thread ( Word (*fn)(void *),
       (ML_(start_thread_NORETURN), stack, flags, ctst,
        child_tidptr, parent_tidptr, NULL);
    res = VG_(mk_SysRes_riscv64_linux)( a0 );
+#elif defined(VGP_or1k_linux)
+   Long a0 = 0;
+   a0 = do_syscall_clone_or1k_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   res = VG_(mk_SysRes_or1k_linux)( a0 );
 #else
 # error Unknown platform
 #endif
@@ -615,6 +631,8 @@ static SysRes setup_child_tls (ThreadId ctid, Addr tlsaddr)
    ctst->arch.vex.guest_r27 = tlsaddr;
 #elif defined(VGP_riscv64_linux)
    ctst->arch.vex.guest_x4 = tlsaddr;
+#elif defined(VGP_or1k_linux)
+   ctst->arch.vex.guest_r10 = tlsaddr;
 #else
 # error Unknown platform
 #endif
@@ -773,7 +791,8 @@ static SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
     || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
     || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
-    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
+    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux) \
+    || defined(VGP_or1k_linux)
    res = VG_(do_syscall5)( __NR_clone, flags, 
                            (UWord)NULL, (UWord)parent_tidptr, 
                            (UWord)NULL, (UWord)child_tidptr );
@@ -841,7 +860,8 @@ PRE(sys_clone)
     || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
     || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
-    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
+    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux) \
+    || defined(VGP_or1k_linux)
 #define ARG_CHILD_TIDPTR ARG5
 #define PRA_CHILD_TIDPTR PRA5
 #define ARG_TLS          ARG4

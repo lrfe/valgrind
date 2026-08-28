@@ -491,6 +491,44 @@ struct vki_stat64 {
    unsigned int       __unused5;
 };
 
+struct vki_stat {
+   unsigned long  st_dev;
+   unsigned long  st_ino;
+   unsigned int   st_mode;
+   unsigned int   st_nlink;
+   unsigned int   st_uid;
+   unsigned int   st_gid;
+   unsigned long  st_rdev;
+   unsigned long  __pad1;
+   long           st_size;
+   int            st_blksize;
+   int            __pad2;
+   long           st_blocks;
+   long           st_atime;
+   unsigned long  st_atime_nsec;
+   long           st_mtime;
+   unsigned long  st_mtime_nsec;
+   long           st_ctime;
+   unsigned long  st_ctime_nsec;
+   unsigned int   __unused4;
+   unsigned int   __unused5;
+};
+
+struct vki_statfs {
+   __vki_u32 f_type;
+   __vki_u32 f_bsize;
+   __vki_u32 f_blocks;
+   __vki_u32 f_bfree;
+   __vki_u32 f_bavail;
+   __vki_u32 f_files;
+   __vki_u32 f_ffree;
+   __vki_kernel_fsid_t f_fsid;
+   __vki_u32 f_namelen;
+   __vki_u32 f_frsize;
+   __vki_u32 f_flags;
+   __vki_u32 f_spare[4];
+};
+
 
 struct vki_winsize {
    unsigned short ws_row;

@@ -1390,6 +1390,22 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
 
 #define PRECISE_GUEST_REG_DEFINEDNESS_AT_STARTUP 1
 
+#  elif defined(VGP_or1k_linux)
+   vg_assert(0 == sizeof(VexGuestOR1KState) % LibVEX_GUEST_STATE_ALIGN);
+
+   LibVEX_GuestOR1K_initialise(&arch->vex);
+
+   VG_(memset)(&arch->vex_shadow1, 0xFF, sizeof(VexGuestOR1KState));
+   VG_(memset)(&arch->vex_shadow2, 0x00, sizeof(VexGuestOR1KState));
+   arch->vex_shadow1.guest_r1 = 0;
+   arch->vex_shadow1.guest_PC = 0;
+
+   arch->vex.guest_r1 = iifii.initial_client_SP;
+   arch->vex.guest_PC = iifii.initial_client_IP;
+
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_STACK_PTR, 4);
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_INSTR_PTR, 4);
+
 #  else
 #    error Unknown platform
 #  endif

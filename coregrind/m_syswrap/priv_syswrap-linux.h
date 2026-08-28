@@ -560,7 +560,11 @@ extern UInt do_syscall_clone_nanomips_linux ( Word (*fn) (void *),  /* a0 - 4 */
                                               void* arg,            /* a3 - 7 */
                                               Int*  child_tid,      /* a4 - 8 */
                                               Int*  parent_tid,     /* a5 - 9 */
-                                              void* tls_ptr);       /* a6 - 10 */
+                                              void* tls_ptr);
+extern UInt do_syscall_clone_or1k_linux ( Word (*fn) (void *),
+                                          void *stack, Int flags, void *arg,
+                                          Int *child_tid, Int *parent_tid,
+                                          void *tls );       /* a6 - 10 */
 extern UInt do_syscall_clone_riscv64_linux ( Word (*fn) (void *),
                                              void* stack,
                                              Int   flags,

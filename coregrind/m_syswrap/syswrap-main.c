@@ -752,6 +752,17 @@ void getSyscallArgsFromGuestState ( /*OUT*/SyscallArgs*       canonical,
    canonical->arg6  = gst->guest_r9;    // a5
    canonical->arg7  = gst->guest_r10;   // a6
    canonical->arg8  = gst->guest_r11;   // a7
+#elif defined(VGP_or1k_linux)
+   VexGuestOR1KState* gst = (VexGuestOR1KState*)gst_vanilla;
+   canonical->canonical_sysno = gst->guest_r11;
+   canonical->arg1  = gst->guest_r3;
+   canonical->arg2  = gst->guest_r4;
+   canonical->arg3  = gst->guest_r5;
+   canonical->arg4  = gst->guest_r6;
+   canonical->arg5  = gst->guest_r7;
+   canonical->arg6  = gst->guest_r8;
+   canonical->arg7  = 0;
+   canonical->arg8  = 0;
 #elif defined(VGP_x86_darwin)
    VexGuestX86State* gst = (VexGuestX86State*)gst_vanilla;
    UWord *stack = (UWord *)gst->guest_ESP;
@@ -1193,6 +1204,15 @@ void putSyscallArgsIntoGuestState ( /*IN*/ SyscallArgs*       canonical,
    gst->guest_r9  = canonical->arg6;
    gst->guest_r10 = canonical->arg7;
    gst->guest_r11 = canonical->arg8;
+#elif defined(VGP_or1k_linux)
+   VexGuestOR1KState* gst = (VexGuestOR1KState*)gst_vanilla;
+   gst->guest_r11 = canonical->canonical_sysno;
+   gst->guest_r3  = canonical->arg1;
+   gst->guest_r4  = canonical->arg2;
+   gst->guest_r5  = canonical->arg3;
+   gst->guest_r6  = canonical->arg4;
+   gst->guest_r7  = canonical->arg5;
+   gst->guest_r8  = canonical->arg6;
 #elif defined(VGP_mips64_linux)
    VexGuestMIPS64State* gst = (VexGuestMIPS64State*)gst_vanilla;
    gst->guest_r2 = canonical->canonical_sysno;
@@ -1328,6 +1348,11 @@ void getSyscallStatusFromGuestState ( /*OUT*/SyscallStatus*     canonical,
    VexGuestMIPS32State* gst = (VexGuestMIPS32State*)gst_vanilla;
    RegWord  a0 = gst->guest_r4;    // a0
    canonical->sres = VG_(mk_SysRes_nanomips_linux)(a0);
+   canonical->what = SsComplete;
+
+#  elif defined(VGP_or1k_linux)
+   VexGuestOR1KState* gst = (VexGuestOR1KState*)gst_vanilla;
+   canonical->sres = VG_(mk_SysRes_or1k_linux)(gst->guest_r11);
    canonical->what = SsComplete;
 
 #  elif defined(VGP_amd64_freebsd)
@@ -1744,6 +1769,17 @@ void putSyscallStatusIntoGuestState ( /*IN*/ ThreadId tid,
    VG_TRACK( post_reg_write, Vg_CoreSysCall, tid,
              OFFSET_riscv64_x10, sizeof(UWord) );
 
+#  elif defined(VGP_or1k_linux)
+   VexGuestOR1KState* gst = (VexGuestOR1KState*)gst_vanilla;
+   vg_assert(canonical->what == SsComplete);
+   if (sr_isError(canonical->sres)) {
+      gst->guest_r11 = - (Long)sr_Err(canonical->sres);
+   } else {
+      gst->guest_r11 = sr_Res(canonical->sres);
+   }
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid,
+             OFFSET_or1k_r11, sizeof(UWord) );
+
 #  elif defined(VGP_x86_solaris)
    VexGuestX86State* gst = (VexGuestX86State*)gst_vanilla;
    SysRes sres = canonical->sres;
@@ -1969,6 +2005,17 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout, /*IN*/Bool syscall_s
    layout->o_arg6   = OFFSET_mips32_r9;
    layout->uu_arg7  = -1; /* impossible value */
    layout->uu_arg8  = -1; /* impossible value */
+
+#elif defined(VGP_or1k_linux)
+   layout->o_sysno  = OFFSET_or1k_r11;
+   layout->o_arg1   = OFFSET_or1k_r3;
+   layout->o_arg2   = OFFSET_or1k_r4;
+   layout->o_arg3   = OFFSET_or1k_r5;
+   layout->o_arg4   = OFFSET_or1k_r6;
+   layout->o_arg5   = OFFSET_or1k_r7;
+   layout->o_arg6   = OFFSET_or1k_r8;
+   layout->uu_arg7  = -1;
+   layout->uu_arg8  = -1;
 
 #elif defined(VGP_mips64_linux)
    layout->o_sysno  = OFFSET_mips64_r2;
@@ -3023,6 +3070,19 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
                       arch->vex.guest_IA, p[0], p[1]);
 
       vg_assert(p[0] == 0x0A);
+   }
+
+#elif defined(VGP_or1k_linux)
+
+   arch->vex.guest_PC -= 4;             // sizeof(or1k instr)
+   /* l.sys has 0x20 as its most significant byte (big-endian memory). */
+   {
+      UChar *p = (UChar *)(Addr)(arch->vex.guest_PC);
+      if (p[0] != 0x20)
+         VG_(message)(Vg_DebugMsg,
+                      "?! restarting over syscall at %#x %02x %02x %02x %02x\n",
+                      arch->vex.guest_PC, p[0], p[1], p[2], p[3]);
+      vg_assert(p[0] == 0x20);
    }
 
 #elif defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
