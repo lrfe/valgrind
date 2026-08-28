@@ -30,6 +30,7 @@
 #define __VEX_HOST_OR1K_DEFS_H
 
 #include "libvex_basictypes.h"
+#include "host_generic_regs.h"
 
 /* ORBIS32 instruction encoders, the bit-packing layer emit_OR1KInstr  */
 /* calls. Each returns the 32-bit word (emitted MSB-first). */
@@ -62,6 +63,73 @@ extern UInt or1k_enc_jalr   ( UInt rB );
 
 extern UInt or1k_enc_nop    ( UInt k );
 extern UInt or1k_enc_sys    ( UInt k );
+
+/*--- host instructions ---*/
+
+/* real GPR n as a host register. */
+static inline HReg hregOR1K_GPR ( UInt n ) { return mkHReg(False, HRcInt32, n, n); }
+
+typedef enum {
+   OR1Kalu_ADD=0x000, OR1Kalu_SUB=0x002, OR1Kalu_AND=0x003,
+   OR1Kalu_OR =0x004, OR1Kalu_XOR=0x005, OR1Kalu_SLL=0x008,
+   OR1Kalu_SRL=0x048, OR1Kalu_SRA=0x088, OR1Kalu_MUL=0x306
+} OR1KAluOp;   /* value is the opcode 0x38 op11 field */
+
+typedef enum {
+   OR1Kext_EXTHS=0x00c, OR1Kext_EXTBS=0x04c,
+   OR1Kext_EXTHZ=0x08c, OR1Kext_EXTBZ=0x0cc
+} OR1KExtOp;
+
+typedef enum {
+   OR1Kin_Alu, OR1Kin_AluI, OR1Kin_ShiftI, OR1Kin_MovHi,
+   OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext
+} OR1KInstrTag;
+
+typedef struct {
+   OR1KInstrTag tag;
+   union {
+      struct { OR1KAluOp op; HReg dst, srcL, srcR;   } Alu;
+      struct { UInt opc;     HReg dst, src; UShort imm; } AluI;   /* addi/andi/ori/xori */
+      struct { UInt type;    HReg dst, src; UChar amt;  } ShiftI;
+      struct { HReg dst; UShort imm;                    } MovHi;
+      struct { UInt opc; HReg dst, base; Short disp;    } Load;   /* lwz/lbz/.. */
+      struct { UInt opc; HReg base, src; Short disp;    } Store;  /* sw/sb/sh */
+      struct { UInt code; HReg srcL, srcR;              } Cmp;
+      struct { UInt code; HReg src; UShort imm;         } CmpI;
+      struct { OR1KExtOp op; HReg dst, src;             } Ext;
+   } OR1Kin;
+} OR1KInstr;
+
+extern OR1KInstr* OR1KInstr_Alu    ( OR1KAluOp, HReg dst, HReg srcL, HReg srcR );
+extern OR1KInstr* OR1KInstr_AluI   ( UInt opc, HReg dst, HReg src, UShort imm );
+extern OR1KInstr* OR1KInstr_ShiftI ( UInt type, HReg dst, HReg src, UChar amt );
+extern OR1KInstr* OR1KInstr_MovHi  ( HReg dst, UShort imm );
+extern OR1KInstr* OR1KInstr_Load   ( UInt opc, HReg dst, HReg base, Short disp );
+extern OR1KInstr* OR1KInstr_Store  ( UInt opc, HReg base, HReg src, Short disp );
+extern OR1KInstr* OR1KInstr_Cmp    ( UInt code, HReg srcL, HReg srcR );
+extern OR1KInstr* OR1KInstr_CmpI   ( UInt code, HReg src, UShort imm );
+extern OR1KInstr* OR1KInstr_Ext    ( OR1KExtOp, HReg dst, HReg src );
+
+extern void ppOR1KInstr ( const OR1KInstr* i );
+
+/* encode one instruction into buf (4 bytes, MSB-first); returns 4. */
+extern Int emit_OR1KInstr ( UChar* buf, Int nbuf, const OR1KInstr* i );
+
+/* r30 is the host-side guest-state pointer; r0 is hardwired zero.  Both */
+/* are reserved from allocation. */
+#define OR1K_GSP  (hregOR1K_GPR(30))
+#define OR1K_ZERO (hregOR1K_GPR(0))
+
+extern const RRegUniverse* getRRegUniverse_OR1K ( void );
+extern void  getRegUsage_OR1K ( HRegUsage*, const OR1KInstr*, Bool );
+extern void  mapRegs_OR1K     ( HRegRemap*, OR1KInstr*, Bool );
+extern void  genSpill_OR1K    ( HInstr**, HInstr**, HReg, Int, Bool );
+extern void  genReload_OR1K   ( HInstr**, HInstr**, HReg, Int, Bool );
+extern HInstr* genMove_OR1K   ( HReg from, HReg to, Bool );
+extern UInt  ppHRegOR1K       ( HReg );
+
+extern HInstrArray* iselSB_OR1K ( const IRSB*, VexArch, const VexArchInfo*,
+                                  const VexAbiInfo*, Int, Int, Bool, Bool, Addr );
 
 #endif /* ndef __VEX_HOST_OR1K_DEFS_H */
 
