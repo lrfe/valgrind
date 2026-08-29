@@ -563,6 +563,7 @@ static SysRes clone_new_thread ( Word (*fn)(void *),
    res = VG_(mk_SysRes_riscv64_linux)( a0 );
 #elif defined(VGP_or1k_linux)
    Long a0 = 0;
+   ctst->arch.vex.guest_r11 = 0;
    a0 = do_syscall_clone_or1k_linux
       (ML_(start_thread_NORETURN), stack, flags, ctst,
        child_tidptr, parent_tidptr, NULL);
