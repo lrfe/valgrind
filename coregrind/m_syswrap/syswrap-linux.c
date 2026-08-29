@@ -791,12 +791,11 @@ static SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
     || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
     || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
-    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux) \
-    || defined(VGP_or1k_linux)
-   res = VG_(do_syscall5)( __NR_clone, flags, 
-                           (UWord)NULL, (UWord)parent_tidptr, 
+    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
+   res = VG_(do_syscall5)( __NR_clone, flags,
+                           (UWord)NULL, (UWord)parent_tidptr,
                            (UWord)NULL, (UWord)child_tidptr );
-#elif defined(VGP_amd64_linux)
+#elif defined(VGP_amd64_linux) || defined(VGP_or1k_linux)
    /* note that the last two arguments are the opposite way round to x86 and
       ppc32 as the amd64 kernel expects the arguments in a different order */
    res = VG_(do_syscall5)( __NR_clone, flags, 
@@ -860,13 +859,13 @@ PRE(sys_clone)
     || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
     || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
-    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux) \
-    || defined(VGP_or1k_linux)
+    || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
 #define ARG_CHILD_TIDPTR ARG5
 #define PRA_CHILD_TIDPTR PRA5
 #define ARG_TLS          ARG4
 #define PRA_TLS          PRA4
-#elif defined(VGP_amd64_linux) || defined(VGP_s390x_linux)
+#elif defined(VGP_amd64_linux) || defined(VGP_s390x_linux) \
+      || defined(VGP_or1k_linux)
 #define ARG_CHILD_TIDPTR ARG4
 #define PRA_CHILD_TIDPTR PRA4
 #define ARG_TLS          ARG5

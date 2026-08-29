@@ -97,26 +97,27 @@ asm (
         fork()-like return-twice semantics, so it needs special
         handling here.
         Upon entry, we have:
-            int (fn)(void*)     in  $a0       0
-            void* child_stack   in  $a1       4
-            int flags           in  $a2       8
-            void* arg           in  $a3      12
-            pid_t* child_tid    in  $a4      16
-            pid_t* parent_tid   in  $a5      20
-            void* tls_ptr       in  $a6      24
+            int (fn)(void*)     in  r3
+            void* child_stack   in  r4
+            int   flags         in  r5
+            void* arg           in  r6
+            pid_t* child_tid    in  r7
+            pid_t* parent_tid   in  r8
+            void* tls_ptr       on  the stack
 
-        System call requires:
-            int    $__NR_clone  in $t4
-            int    flags        in $a0   0
-            void*  child_stack  in $a1   4
-            pid_t* parent_tid   in $a2   8
-            void*  tls_ptr      in $a3  12
-            pid_t* child_tid    in $a4  16
+        The system call requires (openrisc does not select
+        CONFIG_CLONE_BACKWARDS, so the tls pointer comes last):
+            int    __NR_clone   in  r11
+            int    flags        in  r3
+            void*  child_stack  in  r4
+            pid_t* parent_tid   in  r5
+            pid_t* child_tid    in  r6
+            void*  tls_ptr      in  r7
 
    int clone(int (*fn)(void *arg), void *child_stack, int flags, void *arg,
-             void *parent_tidptr, void *tls, void *child_tidptr)
+             void *child_tidptr, void *parent_tidptr, void *tls);
 
-   Returns an Int encoded in the linux-mips way, not a SysRes.
+   Returns the raw r11 value, not a SysRes.
  */
 #define __NR_CLONE        VG_STRINGIFY(__NR_clone)
 #define __NR_EXIT         VG_STRINGIFY(__NR_exit)
@@ -131,8 +132,8 @@ asm (
 "   l.sw   4(r4), r6                               \n\t"
 "   l.ori  r11, r0, " __NR_CLONE "                 \n\t"
 "   l.ori  r3, r5, 0                               \n\t"
-"   l.ori  r5, r7, 0                               \n\t"
-"   l.ori  r6, r8, 0                               \n\t"
+"   l.ori  r5, r8, 0                               \n\t"
+"   l.ori  r6, r7, 0                               \n\t"
 "   l.ori  r7, r0, 0                               \n\t"
 "   l.sys  1                                       \n\t"
 "   l.sfnei r11, 0                                 \n\t"
