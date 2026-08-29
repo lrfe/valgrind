@@ -6144,6 +6144,7 @@ AC_CONFIG_FILES([
    memcheck/tests/ppc64/Makefile
    memcheck/tests/s390x/Makefile
    memcheck/tests/mips32/Makefile
+   memcheck/tests/or1k-linux/Makefile
    memcheck/tests/mips64/Makefile
    memcheck/tests/vbit-test/Makefile
    cachegrind/Makefile

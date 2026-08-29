@@ -1,0 +1,2 @@
+prog: memtest
+vgopts: -q --leak-check=full

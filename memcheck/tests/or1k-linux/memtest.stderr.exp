@@ -1,0 +1,22 @@
+Invalid write of size 1
+   at 0x........: main (memtest.c:9)
+ Address 0x........ is 0 bytes after a block of size 16 alloc'd
+   at 0x........: malloc (vg_replace_malloc.c:...)
+   by 0x........: main (memtest.c:8)
+
+Conditional jump or move depends on uninitialised value(s)
+   at 0x........: main (memtest.c:13)
+
+Invalid read of size 4
+   at 0x........: main (memtest.c:18)
+ Address 0x........ is 0 bytes inside a block of size 4 free'd
+   at 0x........: free (vg_replace_malloc.c:...)
+   by 0x........: main (memtest.c:17)
+ Block was alloc'd at
+   at 0x........: malloc (vg_replace_malloc.c:...)
+   by 0x........: main (memtest.c:12)
+
+64 bytes in 1 blocks are definitely lost in loss record ... of ...
+   at 0x........: malloc (vg_replace_malloc.c:...)
+   by 0x........: main (memtest.c:22)
+
