@@ -88,7 +88,8 @@ typedef enum {
    OR1Kalu_ADD=0x000, OR1Kalu_SUB=0x002, OR1Kalu_AND=0x003,
    OR1Kalu_OR =0x004, OR1Kalu_XOR=0x005, OR1Kalu_SLL=0x008,
    OR1Kalu_SRL=0x048, OR1Kalu_SRA=0x088, OR1Kalu_MUL=0x306,
-   OR1Kalu_DIVS=0x309, OR1Kalu_DIVU=0x30a, OR1Kalu_CMOV=0x00e
+   OR1Kalu_DIVS=0x309, OR1Kalu_DIVU=0x30a, OR1Kalu_CMOV=0x00e,
+   OR1Kalu_FF1 =0x00f, OR1Kalu_FL1 =0x10f
 } OR1KAluOp;   /* value is the opcode 0x38 op11 field */
 
 typedef enum {

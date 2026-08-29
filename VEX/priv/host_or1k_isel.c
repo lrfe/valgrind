@@ -188,6 +188,28 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
             }
             case Iop_16to8:
                return iselIntExpr_R(env, a);          /* low bits already there */
+            case Iop_CtzNat32: {
+               /* l.ff1 gives a one-based index, so take one off it; l.ff1 */
+               /* answers 0 for an all-zero word, which must become 32. */
+               HReg s = iselIntExpr_R(env, a);
+               HReg t = newVRegI(env), d = newVRegI(env);
+               HReg c32 = iselConst(env, 32), dst = newVRegI(env);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_FF1, t, s, OR1K_ZERO));
+               addInstr(env, OR1KInstr_AluI(0x27, d, t, (UShort)0xFFFF));
+               addInstr(env, OR1KInstr_CmpI(0x0/*sfeqi*/, t, 0));
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, c32, d));
+               return dst;
+            }
+            case Iop_ClzNat32: {
+               /* l.fl1 gives the one-based highest set bit, and 0 for an */
+               /* all-zero word, so 32 minus it is right in both cases. */
+               HReg s = iselIntExpr_R(env, a);
+               HReg t = newVRegI(env), c = iselConst(env, 32);
+               HReg dst = newVRegI(env);
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_FL1, t, s, OR1K_ZERO));
+               addInstr(env, OR1KInstr_Alu(OR1Kalu_SUB, dst, c, t));
+               return dst;
+            }
             case Iop_1Uto32: {
                /* materialize the I1 into 0/1 via l.sf* + l.cmov, honouring
                   the F/NF sense that iselCondCode reports. */
