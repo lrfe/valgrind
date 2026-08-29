@@ -77,6 +77,8 @@ static void putIReg ( UInt n, IRExpr* e ) {
 }
 static IRExpr* getSR_F ( void )        { return IRExpr_Get(OFFB(guest_SR_F), Ity_I32); }
 static void    putSR_F ( IRExpr* e )   { stmt(IRStmt_Put(OFFB(guest_SR_F), e)); }
+static IRExpr* getSR_CY ( void )       { return IRExpr_Get(OFFB(guest_SR_CY), Ity_I32); }
+static void    putSR_CY ( IRExpr* e )  { stmt(IRStmt_Put(OFFB(guest_SR_CY), e)); }
 static void    putPC   ( IRExpr* e )   { stmt(IRStmt_Put(OFFB_PC, e)); }
 
 /*--- bit twiddling ---*/
@@ -129,11 +131,55 @@ static UInt splitImm ( UInt insn ) {
    return sext16((rD(insn) << 11) | (insn & 0x7FF));
 }
 
-static Bool dis_simple ( UInt insn )
+/* rD = a + b (+ carry in), writing the unsigned carry out to SR[CY]. */
+/* SR[OV] is left alone: user mode cannot read it without SPR access. */
+static void addSettingCarry ( UInt rd, IRExpr* ea, IRExpr* eb, Bool withCarryIn )
+{
+   IRTemp a = newTemp(Ity_I32), b = newTemp(Ity_I32), s = newTemp(Ity_I32);
+   assign(a, ea);
+   assign(b, eb);
+   assign(s, binop(Iop_Add32, mkexpr(a), mkexpr(b)));
+   if (!withCarryIn) {
+      putSR_CY(unop(Iop_1Uto32, binop(Iop_CmpLT32U, mkexpr(s), mkexpr(a))));
+      putIReg(rd, mkexpr(s));
+      return;
+   }
+   /* the carry in can carry a second time, so fold both carries together. */
+   IRTemp t = newTemp(Ity_I32), c1 = newTemp(Ity_I32), c2 = newTemp(Ity_I32);
+   assign(t, binop(Iop_Add32, mkexpr(s), getSR_CY()));
+   assign(c1, unop(Iop_1Uto32, binop(Iop_CmpLT32U, mkexpr(s), mkexpr(a))));
+   assign(c2, unop(Iop_1Uto32, binop(Iop_CmpLT32U, mkexpr(t), mkexpr(s))));
+   putSR_CY(binop(Iop_Or32, mkexpr(c1), mkexpr(c2)));
+   putIReg(rd, mkexpr(t));
+}
+
+/* rotate right by the low 5 bits of the amount; amount 0 rotates by 0. */
+static IRExpr* rotateRight32 ( IRExpr* val, IRExpr* amt32 )
+{
+   IRTemp v = newTemp(Ity_I32), n = newTemp(Ity_I32);
+   assign(v, val);
+   assign(n, binop(Iop_And32, amt32, mkU32(31)));
+   return binop(Iop_Or32,
+                binop(Iop_Shr32, mkexpr(v), unop(Iop_32to8, mkexpr(n))),
+                binop(Iop_Shl32, mkexpr(v),
+                      unop(Iop_32to8, binop(Iop_And32,
+                                            binop(Iop_Sub32, mkU32(32),
+                                                  mkexpr(n)),
+                                            mkU32(31)))));
+}
+
+static Bool dis_simple ( UInt insn, UInt pc )
 {
    UInt op = opcOf(insn);
 
    switch (op) {
+
+      case 0x02:                                  /* l.adrp rD,imm (page base) */
+         /* the immediate counts 8K pages from the page holding this insn. */
+         DIP("l.adrp r%u,0x%x\n", rD(insn), insn & 0x1FFFFF);
+         putIReg(rD(insn), mkU32((pc & ~0x1FFFu)
+                                 + (((UInt)(((Int)(insn << 11)) >> 11)) << 13)));
+         return True;
 
       case 0x05:                                  /* l.nop */
          DIP("l.nop 0x%x\n", imm16(insn));
@@ -147,7 +193,19 @@ static Bool dis_simple ( UInt insn )
 
       case 0x27:                                  /* l.addi rD,rA,imm (signed) */
          DIP("l.addi r%u,r%u,%d\n", rD(insn), rA(insn), (Int)sext16(imm16(insn)));
-         putIReg(rD(insn), binop(Iop_Add32, getIReg(rA(insn)),
+         addSettingCarry(rD(insn), getIReg(rA(insn)),
+                         mkU32(sext16(imm16(insn))), False);
+         return True;
+
+      case 0x28:                                  /* l.addic rD,rA,imm (+SR[CY]) */
+         DIP("l.addic r%u,r%u,%d\n", rD(insn), rA(insn), (Int)sext16(imm16(insn)));
+         addSettingCarry(rD(insn), getIReg(rA(insn)),
+                         mkU32(sext16(imm16(insn))), True);
+         return True;
+
+      case 0x2c:                                  /* l.muli rD,rA,imm (signed) */
+         DIP("l.muli r%u,r%u,%d\n", rD(insn), rA(insn), (Int)sext16(imm16(insn)));
+         putIReg(rD(insn), binop(Iop_Mul32, getIReg(rA(insn)),
                                  mkU32(sext16(imm16(insn)))));
          return True;
 
@@ -176,7 +234,10 @@ static Bool dis_simple ( UInt insn )
             case 0: iop = Iop_Shl32; nm = "l.slli"; break;
             case 1: iop = Iop_Shr32; nm = "l.srli"; break;
             case 2: iop = Iop_Sar32; nm = "l.srai"; break;
-            default: return False;                /* l.rori: later */
+            default:
+               DIP("l.rori r%u,r%u,0x%x\n", rD(insn), rA(insn), amt);
+               putIReg(rD(insn), rotateRight32(a, mkU32(amt)));
+               return True;
          }
          DIP("%s r%u,r%u,0x%x\n", nm, rD(insn), rA(insn), amt);
          putIReg(rD(insn), binop(iop, a, mkU8(amt)));
@@ -186,6 +247,12 @@ static Bool dis_simple ( UInt insn )
       case 0x1b:                                  /* l.lwa rD,imm(rA) (load-linked) */
          /* single-threaded guest: a plain word load is enough. */
          DIP("l.lwa r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
+         putIReg(rD(insn), load32(memEA(insn)));
+         return True;
+
+      case 0x22:                                  /* l.lws rD,imm(rA) */
+         /* a 32-bit sign-extending word load is just a word load here. */
+         DIP("l.lws r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
          putIReg(rD(insn), load32(memEA(insn)));
          return True;
 
@@ -249,11 +316,33 @@ static Bool dis_simple ( UInt insn )
          UInt opc3 = insn & 0xF;
          if (opc2 == 0) {
             switch (opc3) {
-               case 0x0: case 0x2: case 0x3: case 0x4: case 0x5: {
+               case 0x0:                          /* l.add rD,rA,rB */
+                  DIP("l.add r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+                  addSettingCarry(rD(insn), getIReg(rA(insn)), getIReg(rB(insn)),
+                                  False);
+                  return True;
+
+               case 0x1:                          /* l.addc rD,rA,rB (+SR[CY]) */
+                  DIP("l.addc r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+                  addSettingCarry(rD(insn), getIReg(rA(insn)), getIReg(rB(insn)),
+                                  True);
+                  return True;
+
+               case 0x2: {                        /* l.sub rD,rA,rB */
+                  IRTemp a = newTemp(Ity_I32), b = newTemp(Ity_I32);
+                  assign(a, getIReg(rA(insn)));
+                  assign(b, getIReg(rB(insn)));
+                  DIP("l.sub r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+                  /* SR[CY] is the borrow out of the subtraction. */
+                  putSR_CY(unop(Iop_1Uto32,
+                                binop(Iop_CmpLT32U, mkexpr(a), mkexpr(b))));
+                  putIReg(rD(insn), binop(Iop_Sub32, mkexpr(a), mkexpr(b)));
+                  return True;
+               }
+
+               case 0x3: case 0x4: case 0x5: {
                   IROp iop; const HChar* nm;
                   switch (opc3) {
-                     case 0x0: iop = Iop_Add32; nm = "l.add"; break;
-                     case 0x2: iop = Iop_Sub32; nm = "l.sub"; break;
                      case 0x3: iop = Iop_And32; nm = "l.and"; break;
                      case 0x4: iop = Iop_Or32;  nm = "l.or";  break;
                      default:  iop = Iop_Xor32; nm = "l.xor"; break;
@@ -270,7 +359,11 @@ static Bool dis_simple ( UInt insn )
                      case 0: iop = Iop_Shl32; nm = "l.sll"; break;
                      case 1: iop = Iop_Shr32; nm = "l.srl"; break;
                      case 2: iop = Iop_Sar32; nm = "l.sra"; break;
-                     default: return False;       /* l.ror: later */
+                     default:
+                        DIP("l.ror r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+                        putIReg(rD(insn), rotateRight32(getIReg(rA(insn)),
+                                                        getIReg(rB(insn))));
+                        return True;
                   }
                   DIP("%s r%u,r%u,r%u\n", nm, rD(insn), rA(insn), rB(insn));
                   putIReg(rD(insn), binop(iop, getIReg(rA(insn)), amt));
@@ -293,8 +386,49 @@ static Bool dis_simple ( UInt insn )
                   putIReg(rD(insn), unop(iop, unop(Iop_32to8, getIReg(rA(insn)))));
                   return True;
                }
+               case 0xd:                          /* l.extw{s,z}: 32-bit no-op */
+                  DIP("%s r%u,r%u\n", ((insn >> 6) & 0x3) == 0 ? "l.extws"
+                                                              : "l.extwz",
+                      rD(insn), rA(insn));
+                  putIReg(rD(insn), getIReg(rA(insn)));
+                  return True;
+
+               case 0xe:                          /* l.cmov rD,rA,rB (on SR[F]) */
+                  DIP("l.cmov r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+                  putIReg(rD(insn),
+                          IRExpr_ITE(binop(Iop_CmpNE32, getSR_F(), mkU32(0)),
+                                     getIReg(rA(insn)), getIReg(rB(insn))));
+                  return True;
+
+               case 0xf: {                        /* l.ff1 rD,rA (lowest set bit) */
+                  IRTemp a = newTemp(Ity_I32);
+                  assign(a, getIReg(rA(insn)));
+                  DIP("l.ff1 r%u,r%u\n", rD(insn), rA(insn));
+                  /* one-based index of the lowest set bit, or 0 for no bits. */
+                  putIReg(rD(insn),
+                          IRExpr_ITE(binop(Iop_CmpEQ32, mkexpr(a), mkU32(0)),
+                                     mkU32(0),
+                                     binop(Iop_Add32,
+                                           unop(Iop_CtzNat32, mkexpr(a)),
+                                           mkU32(1))));
+                  return True;
+               }
                default: return False;
             }
+         } else if (opc2 == 1 && opc3 == 0xf) {   /* l.fl1 rD,rA (highest set bit) */
+            IRTemp a = newTemp(Ity_I32);
+            assign(a, getIReg(rA(insn)));
+            DIP("l.fl1 r%u,r%u\n", rD(insn), rA(insn));
+            /* one-based index of the highest set bit; an all-zero word */
+            /* counts 32 leading zeroes, which gives the required 0. */
+            putIReg(rD(insn), binop(Iop_Sub32, mkU32(32),
+                                    unop(Iop_ClzNat32, mkexpr(a))));
+            return True;
+         } else if (opc2 == 3 && opc3 == 0xb) {   /* l.mulu rD,rA,rB */
+            /* the low 32 bits are the same for a signed or unsigned product. */
+            DIP("l.mulu r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
+            putIReg(rD(insn), binop(Iop_Mul32, getIReg(rA(insn)), getIReg(rB(insn))));
+            return True;
          } else if (opc2 == 3 && opc3 == 0x6) {   /* l.mul rD,rA,rB */
             DIP("l.mul r%u,r%u,r%u\n", rD(insn), rA(insn), rB(insn));
             putIReg(rD(insn), binop(Iop_Mul32, getIReg(rA(insn)), getIReg(rB(insn))));
@@ -333,14 +467,14 @@ static Bool dis_simple ( UInt insn )
 }
 
 /* decode the single delay-slot insn at delta. a branch there is illegal. */
-static Bool dis_delay_slot ( const UChar* code, Long delta )
+static Bool dis_delay_slot ( const UChar* code, Long delta, UInt pc )
 {
    UInt insn = fetch32BE(code + delta);
    UInt op   = opcOf(insn);
    if (op==0x00 || op==0x01 || op==0x03 || op==0x04 ||
        op==0x08 || op==0x09 || op==0x11 || op==0x12)
       return False;                              /* control insn in delay slot */
-   return dis_simple(insn);
+   return dis_simple(insn, pc);
 }
 
 /*--- the per-instruction dispatcher ---*/
@@ -394,7 +528,7 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
       case 0x00: {                               /* l.j N */
          UInt target = pc + (UInt)(sext26(insn) << 2);
          DIP("l.j 0x%x\n", target);
-         if (!dis_delay_slot(code, delta + 4)) goto decode_failure;
+         if (!dis_delay_slot(code, delta + 4, pc + 4)) goto decode_failure;
          putPC(mkU32(target));
          dres.len = 8; dres.whatNext = Dis_StopHere; dres.jk_StopHere = Ijk_Boring;
          break;
@@ -404,7 +538,7 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
          UInt target = pc + (UInt)(sext26(insn) << 2);
          DIP("l.jal 0x%x\n", target);
          putIReg(9, mkU32(pc + 8));
-         if (!dis_delay_slot(code, delta + 4)) goto decode_failure;
+         if (!dis_delay_slot(code, delta + 4, pc + 4)) goto decode_failure;
          putPC(mkU32(target));
          dres.len = 8; dres.whatNext = Dis_StopHere; dres.jk_StopHere = Ijk_Call;
          break;
@@ -418,7 +552,7 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
          /* capture the flag before the delay slot runs. */
          assign(cond, binop(isBf ? Iop_CmpNE32 : Iop_CmpEQ32, getSR_F(), mkU32(0)));
          DIP("%s 0x%x\n", isBf ? "l.bf" : "l.bnf", target);
-         if (!dis_delay_slot(code, delta + 4)) goto decode_failure;
+         if (!dis_delay_slot(code, delta + 4, pc + 4)) goto decode_failure;
          stmt(IRStmt_Exit(mkexpr(cond), Ijk_Boring, IRConst_U32(target), OFFB_PC));
          putPC(mkU32(pc + 8));                   /* not-taken falls past delay slot */
          dres.len = 8; dres.whatNext = Dis_StopHere; dres.jk_StopHere = Ijk_Boring;
@@ -429,7 +563,7 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
          IRTemp t = newTemp(Ity_I32);
          assign(t, getIReg(rB(insn)));           /* capture before delay slot */
          DIP("l.jr r%u\n", rB(insn));
-         if (!dis_delay_slot(code, delta + 4)) goto decode_failure;
+         if (!dis_delay_slot(code, delta + 4, pc + 4)) goto decode_failure;
          putPC(mkexpr(t));
          dres.len = 8; dres.whatNext = Dis_StopHere;
          dres.jk_StopHere = rB(insn) == 9 ? Ijk_Ret : Ijk_Boring;
@@ -441,20 +575,44 @@ static DisResult disInstr_OR1K_WRK ( const UChar* code, Long delta,
          assign(t, getIReg(rB(insn)));
          DIP("l.jalr r%u\n", rB(insn));
          putIReg(9, mkU32(pc + 8));
-         if (!dis_delay_slot(code, delta + 4)) goto decode_failure;
+         if (!dis_delay_slot(code, delta + 4, pc + 4)) goto decode_failure;
          putPC(mkexpr(t));
          dres.len = 8; dres.whatNext = Dis_StopHere; dres.jk_StopHere = Ijk_Call;
          break;
       }
 
-      case 0x08:                                 /* l.sys (system group) */
-         DIP("l.sys 0x%x\n", imm16(insn));
-         putPC(mkU32(pc + 4));
-         dres.len = 4; dres.whatNext = Dis_StopHere; dres.jk_StopHere = Ijk_Sys_syscall;
+      case 0x08:                                 /* l.sys/l.trap/the syncs */
+         switch ((insn >> 16) & 0x3FF) {
+            case 0x000:                          /* l.sys imm */
+               DIP("l.sys 0x%x\n", imm16(insn));
+               putPC(mkU32(pc + 4));
+               dres.len = 4; dres.whatNext = Dis_StopHere;
+               dres.jk_StopHere = Ijk_Sys_syscall;
+               break;
+            case 0x100:                          /* l.trap imm */
+               DIP("l.trap 0x%x\n", imm16(insn));
+               putPC(mkU32(pc + 4));
+               dres.len = 4; dres.whatNext = Dis_StopHere;
+               dres.jk_StopHere = Ijk_SigTRAP;
+               break;
+            case 0x200:                          /* l.msync */
+               DIP("l.msync\n");
+               stmt(IRStmt_MBE(Imbe_Fence));
+               putPC(mkU32(pc + 4));
+               break;
+            case 0x280: case 0x300:              /* l.psync, l.csync */
+               /* pipeline and cache sync: nothing to model here. */
+               DIP("%s\n", ((insn >> 16) & 0x3FF) == 0x280 ? "l.psync"
+                                                           : "l.csync");
+               putPC(mkU32(pc + 4));
+               break;
+            default:
+               goto decode_failure;
+         }
          break;
 
       default:
-         if (!dis_simple(insn)) goto decode_failure;
+         if (!dis_simple(insn, pc)) goto decode_failure;
          /* Every instruction's IR must end by writing the fall-through PC to
             the guest IP, so the block can stop cleanly after any insn. */
          putPC(mkU32(pc + 4));
