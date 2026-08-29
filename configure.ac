@@ -6182,6 +6182,7 @@ AC_CONFIG_FILES([
    none/tests/s390x/disasm-test/Makefile
    none/tests/iropt-test/Makefile
    none/tests/mips32/Makefile
+   none/tests/or1k-linux/Makefile
    none/tests/mips64/Makefile
    none/tests/nanomips/Makefile
    none/tests/riscv64/Makefile

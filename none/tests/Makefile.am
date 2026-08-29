@@ -29,6 +29,9 @@ endif
 if VGCONF_ARCHS_INCLUDE_MIPS32
 SUBDIRS += mips32
 endif
+if VGCONF_PLATFORMS_INCLUDE_OR1K_LINUX
+SUBDIRS += or1k-linux
+endif
 if VGCONF_ARCHS_INCLUDE_MIPS64
 SUBDIRS += mips64
 endif
@@ -78,7 +81,7 @@ SUBDIRS += x86-freebsd
 endif
 
 DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm arm64 s390x s390x/disasm-test \
-               mips32 mips64 nanomips \
+               mips32 mips64 nanomips or1k-linux \
                riscv64 linux darwin solaris freebsd amd64-linux x86-linux \
                amd64-darwin x86-darwin amd64-solaris x86-solaris x86-freebsd \
                scripts .
