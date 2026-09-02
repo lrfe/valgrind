@@ -96,7 +96,10 @@ typedef
       /*  176 */ UInt guest_IP_AT_SYSCALL; /* PC of the l.sys, for syscall restart */
 
       /* Pad to a multiple of 16. */
-      /*  180 */ UInt _padding[3];
+      /* LLSC fallback state: l.lwa records here, l.swa checks it. */
+      /*  180 */ UInt guest_LLSC_ACTIVE; /* 1 while a reservation is held */
+      /*  184 */ UInt guest_LLSC_ADDR;
+      /*  188 */ UInt guest_LLSC_DATA;
    }
    VexGuestOR1KState;
 

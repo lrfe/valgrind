@@ -165,6 +165,12 @@ OR1KInstr* OR1KInstr_Call ( Addr target, RetLoc rloc, HReg cond, UChar nArgRegs 
    i->OR1Kin.Call.cond=cond; i->OR1Kin.Call.nArgRegs=nArgRegs;
    return i;
 }
+OR1KInstr* OR1KInstr_CASW ( HReg old, HReg base, HReg expd, HReg data ) {
+   OR1KInstr* i = mk(OR1Kin_CASW);
+   i->OR1Kin.CASW.old=old; i->OR1Kin.CASW.base=base;
+   i->OR1Kin.CASW.expd=expd; i->OR1Kin.CASW.data=data;
+   return i;
+}
 
 /*--- pretty-print ---*/
 
@@ -226,6 +232,11 @@ void ppOR1KInstr ( const OR1KInstr* i ) {
          return;
       case OR1Kin_ProfInc:
          vex_printf("profinc");
+         return;
+      case OR1Kin_CASW:
+         vex_printf("casw r%u,0(r%u),r%u,r%u", gpr(i->OR1Kin.CASW.old),
+                    gpr(i->OR1Kin.CASW.base), gpr(i->OR1Kin.CASW.expd),
+                    gpr(i->OR1Kin.CASW.data));
          return;
       case OR1Kin_Call:
          vex_printf("call 0x%lx [nArgRegs=%u", i->OR1Kin.Call.target,
@@ -438,6 +449,22 @@ Int emit_OR1KInstr ( /*MB_MOD*/Bool* is_profInc,
          *is_profInc = True;
          break;
       }
+      case OR1Kin_CASW: {
+         /* A tight l.lwa/l.swa retry loop on the reserved r9, so nothing */
+         /* runs between the pair and old is only written once inputs are read. */
+         UInt old = gpr(i->OR1Kin.CASW.old), base = gpr(i->OR1Kin.CASW.base);
+         UInt expd = gpr(i->OR1Kin.CASW.expd), data = gpr(i->OR1Kin.CASW.data);
+         p = emitW(p, or1k_enc_load(0x1b, 9, base, 0));      /* 0: l.lwa r9   */
+         p = emitW(p, or1k_enc_sf(0x0/*sfeq*/, 9, expd));    /* 4: r9==expd?  */
+         p = emitW(p, or1k_enc_branch(0x03/*l.bnf*/, 5));    /* 8: ne -> done */
+         p = emitW(p, or1k_enc_nop(0));                      /* c: delay      */
+         p = emitW(p, or1k_enc_store(0x33, base, data, 0));  /* 10: l.swa     */
+         p = emitW(p, or1k_enc_branch(0x03/*l.bnf*/, -5));   /* 14: retry     */
+         p = emitW(p, or1k_enc_nop(0));                      /* 18: delay     */
+         p = emitW(p, or1k_enc_ri(0x2a/*ori*/, old, 9, 0));  /* 1c: old = r9  */
+         break;
+      }
+
       case OR1Kin_Call: {
          /* If guarded, skip the 4-word call when the guard reg is zero. */
          UChar* skip = NULL;
@@ -617,6 +644,11 @@ void getRegUsage_OR1K ( HRegUsage* u, const OR1KInstr* i, Bool mode64 )
       case OR1Kin_ProfInc:
          /* only fixed regs (r9/r11/r30) are touched. */
          return;
+      case OR1Kin_CASW:
+         addHRegUse(u, HRmWrite, i->OR1Kin.CASW.old);
+         addHRegUse(u, HRmRead,  i->OR1Kin.CASW.base);
+         addHRegUse(u, HRmRead,  i->OR1Kin.CASW.expd);
+         addHRegUse(u, HRmRead,  i->OR1Kin.CASW.data); return;
       case OR1Kin_Call: {
          /* Trashes all caller-saved allocatable regs: r3-r8, r11, r12 and the
             odd r13..r31.  Even r14..r28 and r30 (GSP) are callee-saved. */
@@ -670,6 +702,11 @@ void mapRegs_OR1K ( HRegRemap* m, OR1KInstr* i, Bool mode64 )
          if (!hregIsInvalid(i->OR1Kin.Call.cond))
             mapReg(m, &i->OR1Kin.Call.cond);
          return;
+      case OR1Kin_CASW:
+         mapReg(m, &i->OR1Kin.CASW.old);
+         mapReg(m, &i->OR1Kin.CASW.base);
+         mapReg(m, &i->OR1Kin.CASW.expd);
+         mapReg(m, &i->OR1Kin.CASW.data); return;
       default:
          vpanic("mapRegs_OR1K");
    }

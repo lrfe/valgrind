@@ -388,8 +388,9 @@ static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
    if (guard->tag == Iex_Binop) {
       UInt code; Bool ok = True;
       switch (guard->Iex.Binop.op) {
-         case Iop_CmpEQ32:  code = 0;  break;
-         case Iop_CmpNE32:  code = 1;  break;
+         case Iop_CmpEQ32:  case Iop_CasCmpEQ32: code = 0;  break;
+         case Iop_CmpNE32:  case Iop_CasCmpNE32:
+         case Iop_ExpCmpNE32:                    code = 1;  break;
          case Iop_CmpLT32U: code = 4;  break;
          case Iop_CmpLE32U: code = 5;  break;
          case Iop_CmpLT32S: code = 12; break;
@@ -549,6 +550,17 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
             addInstr(env, OR1KInstr_XAssisted(r, stmt->Ist.Exit.offsIP, cc,
                                               stmt->Ist.Exit.jk));
          }
+         return;
+      }
+
+      case Ist_CAS: {
+         IRCAS* cas = stmt->Ist.CAS.details;
+         vassert(cas->oldHi == IRTemp_INVALID && cas->expdHi == NULL);
+         HReg base = iselIntExpr_R(env, cas->addr);
+         HReg expd = iselIntExpr_R(env, cas->expdLo);
+         HReg data = iselIntExpr_R(env, cas->dataLo);
+         HReg old  = lookupIRTemp(env, cas->oldLo);
+         addInstr(env, OR1KInstr_CASW(old, base, expd, data));
          return;
       }
 

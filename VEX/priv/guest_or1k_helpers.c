@@ -74,9 +74,9 @@ void LibVEX_GuestOR1K_initialise ( /*OUT*/VexGuestOR1KState* vex_state )
    vex_state->guest_NRADDR        = 0;
    vex_state->guest_IP_AT_SYSCALL = 0;
 
-   vex_state->_padding[0] = 0;
-   vex_state->_padding[1] = 0;
-   vex_state->_padding[2] = 0;
+   vex_state->guest_LLSC_ACTIVE = 0;
+   vex_state->guest_LLSC_ADDR   = 0;
+   vex_state->guest_LLSC_DATA   = 0;
 }
 
 /*--- spechelper ---*/

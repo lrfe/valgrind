@@ -104,7 +104,7 @@ typedef enum {
    OR1Kin_Alu, OR1Kin_AluI, OR1Kin_ShiftI, OR1Kin_MovHi,
    OR1Kin_Load, OR1Kin_Store, OR1Kin_Cmp, OR1Kin_CmpI, OR1Kin_Ext,
    OR1Kin_XDirect, OR1Kin_XIndir, OR1Kin_XAssisted,
-   OR1Kin_EvCheck, OR1Kin_ProfInc, OR1Kin_Call
+   OR1Kin_EvCheck, OR1Kin_ProfInc, OR1Kin_Call, OR1Kin_CASW
 } OR1KInstrTag;
 
 typedef struct {
@@ -116,6 +116,7 @@ typedef struct {
       struct { HReg dst; UShort imm;                    } MovHi;
       struct { UInt opc; HReg dst, base; Short disp;    } Load;   /* lwz/lbz/.. */
       struct { UInt opc; HReg base, src; Short disp;    } Store;  /* sw/sb/sh */
+      struct { HReg old, base, expd, data;              } CASW;   /* lwa/swa loop */
       struct { UInt code; HReg srcL, srcR;              } Cmp;
       struct { UInt code; HReg src; UShort imm;         } CmpI;
       struct { OR1KExtOp op; HReg dst, src;             } Ext;
@@ -149,6 +150,7 @@ extern OR1KInstr* OR1KInstr_XAssisted ( HReg dstGA, Int pcOff, OR1KCondCode, IRJ
 extern OR1KInstr* OR1KInstr_EvCheck   ( Int offCounter, Int offFailAddr );
 extern OR1KInstr* OR1KInstr_ProfInc   ( void );
 extern OR1KInstr* OR1KInstr_Call      ( Addr target, RetLoc rloc, HReg cond, UChar nArgRegs );
+extern OR1KInstr* OR1KInstr_CASW      ( HReg old, HReg base, HReg expd, HReg data );
 
 extern void ppOR1KInstr ( const OR1KInstr* i );
 

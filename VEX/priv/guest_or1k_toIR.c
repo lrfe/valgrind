@@ -244,11 +244,18 @@ static Bool dis_simple ( UInt insn, UInt pc )
          return True;
       }
 
-      case 0x1b:                                  /* l.lwa rD,imm(rA) (load-linked) */
-         /* single-threaded guest: a plain word load is enough. */
+      case 0x1b: {                                /* l.lwa rD,imm(rA) (load-linked) */
+         /* fallback LLSC: record the address and data for l.swa to check. */
+         IRTemp ea = newTemp(Ity_I32), res = newTemp(Ity_I32);
          DIP("l.lwa r%u,%d(r%u)\n", rD(insn), (Int)sext16(imm16(insn)), rA(insn));
-         putIReg(rD(insn), load32(memEA(insn)));
+         assign(ea, memEA(insn));
+         assign(res, load32(mkexpr(ea)));
+         stmt(IRStmt_Put(OFFB(guest_LLSC_ADDR), mkexpr(ea)));
+         stmt(IRStmt_Put(OFFB(guest_LLSC_DATA), mkexpr(res)));
+         stmt(IRStmt_Put(OFFB(guest_LLSC_ACTIVE), mkU32(1)));
+         putIReg(rD(insn), mkexpr(res));
          return True;
+      }
 
       case 0x22:                                  /* l.lws rD,imm(rA) */
          /* a 32-bit sign-extending word load is just a word load here. */
@@ -282,10 +289,29 @@ static Bool dis_simple ( UInt insn, UInt pc )
          return True;
 
       case 0x33: {                                /* l.swa imm(rA),rB (store-cond.) */
-         /* single-threaded guest: the store always succeeds, so set SR[F]. */
-         IRExpr* ea = binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn)));
+         /* fallback LLSC: fail unless the l.lwa reservation still holds and */
+         /* memory is unchanged, then commit with a real CAS. */
+         IRTemp ea = newTemp(Ity_I32), actv = newTemp(Ity_I32);
+         IRTemp data = newTemp(Ity_I32), old = newTemp(Ity_I32);
+         IRConst* nia = IRConst_U32(pc + 4);
          DIP("l.swa %d(r%u),r%u\n", (Int)splitImm(insn), rA(insn), rB(insn));
-         stmt(IRStmt_Store(OR1K_ENDNESS, ea, getIReg(rB(insn))));
+         assign(ea, binop(Iop_Add32, getIReg(rA(insn)), mkU32(splitImm(insn))));
+         putSR_F(mkU32(0));
+         assign(actv, IRExpr_Get(OFFB(guest_LLSC_ACTIVE), Ity_I32));
+         stmt(IRStmt_Put(OFFB(guest_LLSC_ACTIVE), mkU32(0)));
+         stmt(IRStmt_Exit(binop(Iop_CmpEQ32, mkexpr(actv), mkU32(0)),
+                          Ijk_Boring, nia, OFFB_PC));
+         stmt(IRStmt_Exit(binop(Iop_CmpNE32, mkexpr(ea),
+                                IRExpr_Get(OFFB(guest_LLSC_ADDR), Ity_I32)),
+                          Ijk_Boring, nia, OFFB_PC));
+         assign(data, IRExpr_Get(OFFB(guest_LLSC_DATA), Ity_I32));
+         stmt(IRStmt_Exit(binop(Iop_CmpNE32, load32(mkexpr(ea)), mkexpr(data)),
+                          Ijk_Boring, nia, OFFB_PC));
+         stmt(IRStmt_CAS(mkIRCAS(IRTemp_INVALID, old, OR1K_ENDNESS, mkexpr(ea),
+                                 NULL, mkexpr(data),
+                                 NULL, getIReg(rB(insn)))));
+         stmt(IRStmt_Exit(binop(Iop_CmpNE32, mkexpr(old), mkexpr(data)),
+                          Ijk_Boring, nia, OFFB_PC));
          putSR_F(mkU32(1));
          return True;
       }
@@ -474,6 +500,8 @@ static Bool dis_delay_slot ( const UChar* code, Long delta, UInt pc )
    if (op==0x00 || op==0x01 || op==0x03 || op==0x04 ||
        op==0x08 || op==0x09 || op==0x11 || op==0x12)
       return False;                              /* control insn in delay slot */
+   if (op==0x33)
+      return False;                              /* l.swa exits, cannot nest */
    return dis_simple(insn, pc);
 }
 
