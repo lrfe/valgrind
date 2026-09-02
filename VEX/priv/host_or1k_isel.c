@@ -42,6 +42,7 @@ typedef struct {
    Int          n_vregmap;
    HInstrArray* code;
    Int          vreg_ctr;
+   Bool         chainingAllowed;
 } ISelEnv;
 
 static HReg newVRegI ( ISelEnv* env ) {
@@ -539,8 +540,15 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
       case Ist_Exit: {
          vassert(stmt->Ist.Exit.dst->tag == Ico_U32);
          OR1KCondCode cc = iselCondCode(env, stmt->Ist.Exit.guard);
-         addInstr(env, OR1KInstr_XDirect(stmt->Ist.Exit.dst->Ico.U32,
-                                         stmt->Ist.Exit.offsIP, cc));
+         if (stmt->Ist.Exit.jk == Ijk_Boring && env->chainingAllowed) {
+            addInstr(env, OR1KInstr_XDirect(stmt->Ist.Exit.dst->Ico.U32,
+                                            stmt->Ist.Exit.offsIP, cc));
+         } else {
+            /* a non-boring side exit, or chaining is off: assisted exit. */
+            HReg r = iselConst(env, stmt->Ist.Exit.dst->Ico.U32);
+            addInstr(env, OR1KInstr_XAssisted(r, stmt->Ist.Exit.offsIP, cc,
+                                              stmt->Ist.Exit.jk));
+         }
          return;
       }
 
@@ -587,6 +595,7 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    env.type_env  = bb->tyenv;
    env.code      = newHInstrArray();
    env.vreg_ctr  = 0;
+   env.chainingAllowed = chaining;
    env.n_vregmap = bb->tyenv->types_used;
    env.vregmap   = LibVEX_Alloc_inline(env.n_vregmap * sizeof(HReg));
    for (i = 0; i < env.n_vregmap; i++)
@@ -605,8 +614,8 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
 
    /* Transfer to bb->next.  The jump kind decides how and takes priority
       over a constant target, so a syscall still reaches the scheduler. */
-   if (bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
-       || bb->jumpkind == Ijk_Ret) {
+   if ((bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
+        || bb->jumpkind == Ijk_Ret) && env.chainingAllowed) {
       if (bb->next->tag == Iex_Const) {
          vassert(bb->next->Iex.Const.con->tag == Ico_U32);
          addInstr(&env, OR1KInstr_XDirect(bb->next->Iex.Const.con->Ico.U32,
@@ -615,6 +624,11 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
          addInstr(&env, OR1KInstr_XIndir(iselIntExpr_R(&env, bb->next),
                                          bb->offsIP, OR1Kcc_AL));
       }
+   } else if (bb->jumpkind == Ijk_Boring || bb->jumpkind == Ijk_Call
+              || bb->jumpkind == Ijk_Ret) {
+      /* chaining is off (a no-redirect translation): assisted, boring. */
+      addInstr(&env, OR1KInstr_XAssisted(iselIntExpr_R(&env, bb->next),
+                                         bb->offsIP, OR1Kcc_AL, Ijk_Boring));
    } else {
       /* Assisted exits always go through a register target. */
       addInstr(&env, OR1KInstr_XAssisted(iselIntExpr_R(&env, bb->next),
