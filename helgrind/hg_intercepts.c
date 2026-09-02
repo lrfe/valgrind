@@ -111,6 +111,14 @@
 #  error "Unknown platform/thread wrapping"
 #endif
 
+/* musl has no symbol versioning, so the glibc-style name@* wrappers can
+   never match there; intercept the plain name instead. */
+#if defined(MUSL_LIBC)
+#  define PTH_VERNAME(versioned, plain) plain
+#else
+#  define PTH_VERNAME(versioned, plain) versioned
+#endif
+
 #if defined(MUSL_LIBC)
 /* musl's pthread_*_lock and friends call their own exported try/timed
    variants, which are also wrapped here, so a wrapper can be entered
@@ -500,19 +508,12 @@ static int pthread_create_WRK(pthread_t *thread, const pthread_attr_t *attr,
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucreateZAZa, // pthread_create@*
+   PTH_FUNC(int, // pthread_create@*
+            PTH_VERNAME(pthreadZucreateZAZa, pthreadZucreate),
                  pthread_t *thread, const pthread_attr_t *attr,
                  void *(*start) (void *), void *arg) {
       return pthread_create_WRK(thread, attr, start, arg);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucreate, // pthread_create
-                 pthread_t *thread, const pthread_attr_t *attr,
-                 void *(*start) (void *), void *arg) {
-      return pthread_create_WRK(thread, attr, start, arg);
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucreate, // pthread_create
                  pthread_t *thread, const pthread_attr_t *attr,
@@ -1419,18 +1420,11 @@ static int pthread_cond_wait_WRK(pthread_cond_t* cond,
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZuwaitZAZa, // pthread_cond_wait@*
+   PTH_FUNC(int, // pthread_cond_wait@*
+            PTH_VERNAME(pthreadZucondZuwaitZAZa, pthreadZucondZuwait),
                  pthread_cond_t* cond, pthread_mutex_t* mutex) {
       return pthread_cond_wait_WRK(cond, mutex);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZuwait, // pthread_cond_wait
-                 pthread_cond_t* cond, pthread_mutex_t* mutex) {
-      HG_MUSL_PASSTHRU(CALL_FN_W_WW, cond, mutex);
-      return HG_MUSL_GUARDED(pthread_cond_wait_WRK(cond, mutex));
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZuwait, // pthread_cond_wait
                  pthread_cond_t* cond, pthread_mutex_t* mutex) {
@@ -1533,20 +1527,12 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZutimedwaitZAZa, // pthread_cond_timedwait@*
+   PTH_FUNC(int, // pthread_cond_timedwait@*
+            PTH_VERNAME(pthreadZucondZutimedwaitZAZa, pthreadZucondZutimedwait),
                  pthread_cond_t* cond, pthread_mutex_t* mutex, 
                  struct timespec* abstime) {
       return pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
-                 pthread_cond_t* cond, pthread_mutex_t* mutex, 
-                 struct timespec* abstime) {
-      HG_MUSL_PASSTHRU(CALL_FN_W_WWW, cond, mutex, abstime);
-      return HG_MUSL_GUARDED(pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT));
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
                  pthread_cond_t* cond, pthread_mutex_t* mutex, 
@@ -1715,17 +1701,11 @@ static int pthread_cond_signal_WRK(pthread_cond_t* cond)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZusignalZAZa, // pthread_cond_signal@*
+   PTH_FUNC(int, // pthread_cond_signal@*
+            PTH_VERNAME(pthreadZucondZusignalZAZa, pthreadZucondZusignal),
                  pthread_cond_t* cond) {
       return pthread_cond_signal_WRK(cond);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZusignal, // pthread_cond_signal
-                 pthread_cond_t* cond) {
-      return pthread_cond_signal_WRK(cond);
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZusignal, // pthread_cond_signal
                  pthread_cond_t* cond) {
@@ -1789,17 +1769,11 @@ static int pthread_cond_broadcast_WRK(pthread_cond_t* cond)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZubroadcastZAZa, // pthread_cond_broadcast@*
+   PTH_FUNC(int, // pthread_cond_broadcast@*
+            PTH_VERNAME(pthreadZucondZubroadcastZAZa, pthreadZucondZubroadcast),
                  pthread_cond_t* cond) {
       return pthread_cond_broadcast_WRK(cond);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZubroadcast, // pthread_cond_broadcast
-                 pthread_cond_t* cond) {
-      return pthread_cond_broadcast_WRK(cond);
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZubroadcast, // pthread_cond_broadcast
                  pthread_cond_t* cond) {
@@ -1858,17 +1832,11 @@ static int pthread_cond_init_WRK(pthread_cond_t* cond, pthread_condattr_t *cond_
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZuinitZAZa, // pthread_cond_init@*
+   PTH_FUNC(int, // pthread_cond_init@*
+            PTH_VERNAME(pthreadZucondZuinitZAZa, pthreadZucondZuinit),
 	    pthread_cond_t* cond, pthread_condattr_t* cond_attr) {
      return pthread_cond_init_WRK(cond, cond_attr);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZuinit, // pthread_cond_init
-	    pthread_cond_t* cond, pthread_condattr_t* cond_attr) {
-     return pthread_cond_init_WRK(cond, cond_attr);
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZuinit, // pthread_cond_init@*
 	    pthread_cond_t* cond, pthread_condattr_t* cond_attr) {
@@ -1963,17 +1931,11 @@ static int pthread_cond_destroy_WRK(pthread_cond_t* cond)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, pthreadZucondZudestroyZAZa, // pthread_cond_destroy@*
+   PTH_FUNC(int, // pthread_cond_destroy@*
+            PTH_VERNAME(pthreadZucondZudestroyZAZa, pthreadZucondZudestroy),
                  pthread_cond_t* cond) {
       return pthread_cond_destroy_WRK(cond);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, pthreadZucondZudestroy, // pthread_cond_destroy
-                 pthread_cond_t* cond) {
-      return pthread_cond_destroy_WRK(cond);
-   }
-#endif
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZudestroy, // pthread_cond_destroy@*
                  pthread_cond_t* cond) {
@@ -3220,17 +3182,11 @@ static int sem_init_WRK(sem_t* sem, int pshared, unsigned long value)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, semZuinitZAZa, // sem_init@*
+   PTH_FUNC(int, // sem_init@*
+            PTH_VERNAME(semZuinitZAZa, semZuinit),
                  sem_t* sem, int pshared, unsigned long value) {
       return sem_init_WRK(sem, pshared, value);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, semZuinit, // sem_init
-                 sem_t* sem, int pshared, unsigned long value) {
-      return sem_init_WRK(sem, pshared, value);
-   }
-#endif
 #elif defined(VGO_darwin)
 // exists but fails with ENOSYS function not implemented
    LIBC_FUNC(int, semZuinit, // sem_init
@@ -3316,17 +3272,11 @@ static int sem_destroy_WRK(sem_t* sem)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, semZudestroyZAZa,  // sem_destroy*
+   PTH_FUNC(int, // sem_destroy@*
+            PTH_VERNAME(semZudestroyZAZa, semZudestroy),
                  sem_t* sem) {
       return sem_destroy_WRK(sem);
    }
-#if defined(MUSL_LIBC)
-   /* musl exports the unversioned name only. */
-   PTH_FUNC(int, semZudestroy,  // sem_destroy*
-                 sem_t* sem) {
-      return sem_destroy_WRK(sem);
-   }
-#endif
 #elif defined(VGO_darwin)
 // exists but fails with ENOSYS function not implemented
    LIBC_FUNC(int, semZudestroy,  // sem_destroy
