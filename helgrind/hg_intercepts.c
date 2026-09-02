@@ -111,6 +111,24 @@
 #  error "Unknown platform/thread wrapping"
 #endif
 
+#if defined(MUSL_LIBC)
+/* musl's pthread_*_lock and friends call their own exported try/timed
+   variants, which are also wrapped here, so a wrapper can be entered
+   while another one is active on the same thread.  Only the outermost
+   wrapper may talk to the tool; nested entries just run the real fn.
+   The counter is volatile so the ++/-- pair around the call survives. */
+static __thread volatile int hg_musl_nest;
+#define HG_MUSL_PASSTHRU(CALL, ...) \
+   do { if (hg_musl_nest > 0) { \
+           int _r; OrigFn _fn; VALGRIND_GET_ORIG_FN(_fn); \
+           CALL(_r, _fn, __VA_ARGS__); return _r; } } while (0)
+#define HG_MUSL_GUARDED(expr) \
+   ({ hg_musl_nest++; int _g = (expr); hg_musl_nest--; _g; })
+#else
+#define HG_MUSL_PASSTHRU(CALL, ...) do { } while (0)
+#define HG_MUSL_GUARDED(expr) (expr)
+#endif
+
 #if defined(VGO_freebsd)
 #define LIBC_FUNC(ret_ty, f, args...) \
    ret_ty I_WRAP_SONAME_FNNAME_ZZ(VG_Z_LIBC_SONAME,f)(args); \
@@ -1028,7 +1046,8 @@ HG_MUTEX_LOCK_OUT:
 #if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZumutexZulock, // pthread_mutex_lock
             pthread_mutex_t *mutex) {
-      return mutex_lock_WRK(mutex);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, mutex);
+      return HG_MUSL_GUARDED(mutex_lock_WRK(mutex));
    }
 #elif defined(VGO_solaris)
    PTH_FUNC(int, mutexZulock, // mutex_lock
@@ -1115,7 +1134,8 @@ static int mutex_trylock_WRK(pthread_mutex_t *mutex)
 #if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZumutexZutrylock, // pthread_mutex_trylock
             pthread_mutex_t *mutex) {
-      return mutex_trylock_WRK(mutex);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, mutex);
+      return HG_MUSL_GUARDED(mutex_trylock_WRK(mutex));
    }
 #elif defined(VGO_solaris)
    PTH_FUNC(int, mutexZutrylock, // mutex_trylock
@@ -1173,8 +1193,9 @@ static int mutex_timedlock_WRK(pthread_mutex_t *mutex,
 PTH_FUNC(int, pthreadZumutexZutimedlock, // pthread_mutex_timedlock
          pthread_mutex_t *mutex,
          void *timeout) {
-   return mutex_timedlock_WRK(mutex, timeout);
-}
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, mutex, timeout);
+      return HG_MUSL_GUARDED(mutex_timedlock_WRK(mutex, timeout));
+   }
 #if defined(VGO_solaris)
 PTH_FUNC(int, pthreadZumutexZureltimedlock, // pthread_mutex_reltimedlock
          pthread_mutex_t *mutex,
@@ -1275,7 +1296,8 @@ static int mutex_unlock_WRK(pthread_mutex_t *mutex)
 #if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZumutexZuunlock, // pthread_mutex_unlock
             pthread_mutex_t *mutex) {
-      return mutex_unlock_WRK(mutex);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, mutex);
+      return HG_MUSL_GUARDED(mutex_unlock_WRK(mutex));
    }
 #elif defined(VGO_solaris)
    PTH_FUNC(int, mutexZuunlock, // mutex_unlock
@@ -1396,7 +1418,8 @@ static int pthread_cond_wait_WRK(pthread_cond_t* cond,
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZucondZuwait, // pthread_cond_wait
                  pthread_cond_t* cond, pthread_mutex_t* mutex) {
-      return pthread_cond_wait_WRK(cond, mutex);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, cond, mutex);
+      return HG_MUSL_GUARDED(pthread_cond_wait_WRK(cond, mutex));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZucondZuwaitZa, // pthread_cond_wait*
@@ -1503,13 +1526,15 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
    PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
                  pthread_cond_t* cond, pthread_mutex_t* mutex, 
                  struct timespec* abstime) {
-      return pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WWW, cond, mutex, abstime);
+      return HG_MUSL_GUARDED(pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
                  pthread_cond_t* cond, pthread_mutex_t* mutex, 
                  struct timespec* abstime) {
-      return pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WWW, cond, mutex, abstime);
+      return HG_MUSL_GUARDED(pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT));
    }
    PTH_FUNC(int, pthreadZucondZutimedwaitZDZa, // pthread_cond_timedwait$*
                  pthread_cond_t* cond, pthread_mutex_t* mutex, 
@@ -1535,7 +1560,8 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
    PTH_FUNC(int, pthreadZucondZutimedwait, // pthread_cond_timedwait
                  pthread_cond_t* cond, pthread_mutex_t* mutex,
                  struct timespec* abstime) {
-      return pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WWW, cond, mutex, abstime);
+      return HG_MUSL_GUARDED(pthread_cond_timedwait_WRK(cond, mutex, abstime, ETIMEDOUT));
    }
 #else
 #  error "Unsupported OS"
@@ -2490,12 +2516,14 @@ static int pthread_rwlock_wrlock_WRK(pthread_rwlock_t* rwlock)
 #if defined(VGO_linux)
    PTH_FUNC(int, pthreadZurwlockZuwrlock, // pthread_rwlock_wrlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_wrlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_wrlock_WRK(rwlock));
    }
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZurwlockZuwrlock, // pthread_rwlock_wrlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_wrlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_wrlock_WRK(rwlock));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZurwlockZuwrlockZa, // pthread_rwlock_wrlock*
@@ -2576,12 +2604,14 @@ static int pthread_rwlock_rdlock_WRK(pthread_rwlock_t* rwlock)
 #if defined(VGO_linux)
    PTH_FUNC(int, pthreadZurwlockZurdlock, // pthread_rwlock_rdlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_rdlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_rdlock_WRK(rwlock));
    }
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZurwlockZurdlock, // pthread_rwlock_rdlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_rdlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_rdlock_WRK(rwlock));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZurwlockZurdlockZa, // pthread_rwlock_rdlock*
@@ -2680,12 +2710,14 @@ static int pthread_rwlock_trywrlock_WRK(pthread_rwlock_t* rwlock)
 #if defined(VGO_linux)
    PTH_FUNC(int, pthreadZurwlockZutrywrlock, // pthread_rwlock_trywrlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_trywrlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_trywrlock_WRK(rwlock));
    }
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZurwlockZutrywrlock, // pthread_rwlock_trywrlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_trywrlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_trywrlock_WRK(rwlock));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZurwlockZutrywrlockZa, // pthread_rwlock_trywrlock*
@@ -2747,12 +2779,14 @@ static int pthread_rwlock_tryrdlock_WRK(pthread_rwlock_t* rwlock)
 #if defined(VGO_linux)
    PTH_FUNC(int, pthreadZurwlockZutryrdlock, // pthread_rwlock_tryrdlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_tryrdlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_tryrdlock_WRK(rwlock));
    }
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZurwlockZutryrdlock, // pthread_rwlock_tryrdlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_tryrdlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_tryrdlock_WRK(rwlock));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZurwlockZutryrdlockZa, // pthread_rwlock_tryrdlock*
@@ -2814,20 +2848,23 @@ static int pthread_rwlock_timedrdlock_WRK(pthread_rwlock_t *rwlock,
 PTH_FUNC(int, pthreadZurwlockZutimedrdlock, // pthread_rwlock_timedrdlock
               pthread_rwlock_t *rwlock,
               const struct timespec *timeout) {
-   return pthread_rwlock_timedrdlock_WRK(rwlock, timeout);
-}
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedrdlock_WRK(rwlock, timeout));
+   }
 #elif defined(VGO_darwin)
 #elif defined(VGO_freebsd)
 PTH_FUNC(int, pthreadZurwlockZutimedrdlock, // pthread_rwlock_timedrdlock
               pthread_rwlock_t *rwlock,
               const struct timespec *timeout) {
-   return pthread_rwlock_timedrdlock_WRK(rwlock, timeout);
-}
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedrdlock_WRK(rwlock, timeout));
+   }
 #elif defined(VGO_solaris)
    PTH_FUNC(int, pthreadZurwlockZutimedrdlock, // pthread_rwlock_timedrdlock
                  pthread_rwlock_t *rwlock,
                  const struct timespec *timeout) {
-      return pthread_rwlock_timedrdlock_WRK(rwlock, timeout);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedrdlock_WRK(rwlock, timeout));
    }
    PTH_FUNC(int, pthreadZurwlockZureltimedrdlockZunp, // pthread_rwlock_timedrdlock_np
                  pthread_rwlock_t *rwlock,
@@ -2930,20 +2967,23 @@ static int pthread_rwlock_timedwrlock_WRK(pthread_rwlock_t *rwlock,
 PTH_FUNC(int, pthreadZurwlockZutimedwrlock, // pthread_rwlock_timedwrlock
               pthread_rwlock_t *rwlock,
               const struct timespec *timeout) {
-   return pthread_rwlock_timedwrlock_WRK(rwlock, timeout);
-}
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedwrlock_WRK(rwlock, timeout));
+   }
 #elif defined(VGO_darwin)
 #elif defined(VGO_freebsd)
 PTH_FUNC(int, pthreadZurwlockZutimedwrlock, // pthread_rwlock_timedwrlock
               pthread_rwlock_t *rwlock,
               const struct timespec *timeout) {
-   return pthread_rwlock_timedwrlock_WRK(rwlock, timeout);
-}
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedwrlock_WRK(rwlock, timeout));
+   }
 #elif defined(VGO_solaris)
    PTH_FUNC(int, pthreadZurwlockZutimedwrlock, // pthread_rwlock_timedwrlock
                  pthread_rwlock_t *rwlock,
                  const struct timespec *timeout) {
-      return pthread_rwlock_timedwrlock_WRK(rwlock, timeout);
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, rwlock, timeout);
+      return HG_MUSL_GUARDED(pthread_rwlock_timedwrlock_WRK(rwlock, timeout));
    }
    PTH_FUNC(int, pthreadZurwlockZureltimedwrlockZunp, // pthread_rwlock_timedwrlock_np
                  pthread_rwlock_t *rwlock,
@@ -3038,12 +3078,14 @@ static int pthread_rwlock_unlock_WRK(pthread_rwlock_t* rwlock)
 #if defined(VGO_linux)
    PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_unlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_unlock_WRK(rwlock));
    }
 #elif defined(VGO_freebsd)
    PTH_FUNC(int, pthreadZurwlockZuunlock, // pthread_rwlock_unlock
                  pthread_rwlock_t* rwlock) {
-      return pthread_rwlock_unlock_WRK(rwlock);
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, rwlock);
+      return HG_MUSL_GUARDED(pthread_rwlock_unlock_WRK(rwlock));
    }
 #elif defined(VGO_darwin)
    PTH_FUNC(int, pthreadZurwlockZuunlockZa, // pthread_rwlock_unlock*
@@ -3281,8 +3323,9 @@ static int sem_wait_WRK(sem_t* sem)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, semZuwait, sem_t* sem) { /* sem_wait */
-      return sem_wait_WRK(sem);
+   PTH_FUNC(int, semZuwait, sem_t* sem) {
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, sem);
+      return HG_MUSL_GUARDED(sem_wait_WRK(sem));
    }
    PTH_FUNC(int, semZuwaitZAZa, sem_t* sem) { /* sem_wait@* */
       return sem_wait_WRK(sem);
@@ -3348,9 +3391,10 @@ static int sem_trywait_WRK(sem_t* sem)
 }
 
 #if defined(VGO_linux)
-PTH_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
-   return sem_trywait_WRK(sem);
-}
+PTH_FUNC(int, semZutrywait, sem_t* sem) {
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, sem);
+      return HG_MUSL_GUARDED(sem_trywait_WRK(sem));
+   }
 PTH_FUNC(int, semZutrywaitZAZa, sem_t* sem) { /* sem_trywait@* */
    return sem_trywait_WRK(sem);
 }
@@ -3413,9 +3457,10 @@ static int sem_timedwait_WRK(sem_t* sem, const struct timespec* abs_timeout)
 }
 
 #if defined(VGO_linux)
-PTH_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
-   return sem_timedwait_WRK(sem, abs_timeout);
-}
+PTH_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) {
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, sem, abs_timeout);
+      return HG_MUSL_GUARDED(sem_timedwait_WRK(sem, abs_timeout));
+   }
 PTH_FUNC(int, semZutimedwaitZAZa, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait@* */
    return sem_timedwait_WRK(sem, abs_timeout);
 }
@@ -3428,9 +3473,10 @@ PTH_FUNC(int, semaZutimedwait, sem_t *sem, const struct timespec* abs_timeout) {
    return sem_timedwait_WRK(sem, abs_timeout);
 }
 #if defined(__illumos__)
-PTH_FUNC(int, semZutimedwait, sem_t *sem, const struct timespec* abs_timeout) { /* sem_timedwait */
-   return sem_timedwait_WRK(sem, abs_timeout);
-}
+PTH_FUNC(int, semZutimedwait, sem_t *sem, const struct timespec* abs_timeout) {
+      HG_MUSL_PASSTHRU(CALL_FN_W_WW, sem, abs_timeout);
+      return HG_MUSL_GUARDED(sem_timedwait_WRK(sem, abs_timeout));
+   }
 #endif
 #else
 #  error "Unsupported OS"
@@ -3525,8 +3571,9 @@ static int sem_post_WRK(sem_t* sem)
    return ret;
 }
 #if defined(VGO_linux)
-   PTH_FUNC(int, semZupost, sem_t* sem) { /* sem_post */
-      return sem_post_WRK(sem);
+   PTH_FUNC(int, semZupost, sem_t* sem) {
+      HG_MUSL_PASSTHRU(CALL_FN_W_W, sem);
+      return HG_MUSL_GUARDED(sem_post_WRK(sem));
    }
    PTH_FUNC(int, semZupostZAZa, sem_t* sem) { /* sem_post@* */
       return sem_post_WRK(sem);
