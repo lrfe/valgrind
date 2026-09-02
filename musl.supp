@@ -135,3 +135,17 @@
    fun:__funcs_on_exit
    fun:exit
 }
+
+{
+   musl: __libc_exit_fini keeps init_fini_lock held while the process exits
+   Helgrind:Misc
+   fun:_Exit
+   ...
+}
+
+{
+   musl-helgrind-__wait: races inside musl's futex wait helper are on libc-internal lock words
+   Helgrind:Race
+   fun:__wait
+   ...
+}
