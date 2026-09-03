@@ -1352,7 +1352,8 @@ void getSyscallStatusFromGuestState ( /*OUT*/SyscallStatus*     canonical,
 
 #  elif defined(VGP_or1k_linux)
    VexGuestOR1KState* gst = (VexGuestOR1KState*)gst_vanilla;
-   canonical->sres = VG_(mk_SysRes_or1k_linux)(gst->guest_r11);
+   /* r11 is 32-bit; sign-extend so -errno is seen as an error. */
+   canonical->sres = VG_(mk_SysRes_or1k_linux)((Int)gst->guest_r11);
    canonical->what = SsComplete;
 
 #  elif defined(VGP_amd64_freebsd)

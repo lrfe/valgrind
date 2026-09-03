@@ -660,7 +660,7 @@ VgHashTable *ht_sigchld_ignore = NULL;
 #  define VG_UCONTEXT_INSTR_PTR(uc)       ((UWord)((uc)->uc_mcontext.regs.pc))
 #  define VG_UCONTEXT_STACK_PTR(uc)       ((UWord)((uc)->uc_mcontext.regs.gpr[1]))
 #  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                               \
-      VG_(mk_SysRes_or1k_linux)( (uc)->uc_mcontext.regs.gpr[11] )
+      VG_(mk_SysRes_or1k_linux)( (Int)(uc)->uc_mcontext.regs.gpr[11] )
 #  define VG_UCONTEXT_TO_UnwindStartRegs(srP, uc)                \
       { (srP)->r_pc = (uc)->uc_mcontext.regs.pc;                 \
         (srP)->r_sp = (uc)->uc_mcontext.regs.gpr[1];             \
