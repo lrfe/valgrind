@@ -149,3 +149,15 @@
    fun:__wait
    ...
 }
+
+{
+   musl-drd-__tl_lock-plain: __tl_lock reads __thread_list_lock without atomics
+   drd:ConflictingAccess
+   fun:__tl_lock
+}
+
+{
+   musl-drd-__wait: races inside musl's futex wait helper are on libc-internal lock words
+   drd:ConflictingAccess
+   fun:__wait
+}
