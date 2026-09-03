@@ -940,7 +940,7 @@ void calculate_SKSS_from_SCSS ( SKSS* dst )
       if (skss_handler != VKI_SIG_IGN && skss_handler != VKI_SIG_DFL)
          skss_flags |= VKI_SA_SIGINFO;
 
-#     if !defined(VGP_riscv64_linux)
+#     if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux)
       /* use our own restorer */
       skss_flags |= VKI_SA_RESTORER;
 #     endif
@@ -1180,7 +1180,7 @@ static void handle_SCSS_change ( Bool force_update )
       ksa.ksa_handler = skss.skss_per_sig[sig].skss_handler;
       ksa.sa_flags    = skss.skss_per_sig[sig].skss_flags;
 #     if !defined(VGP_ppc32_linux) && !defined(VGP_mips32_linux) && \
-         !defined(VGP_riscv64_linux) && \
+         !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
          !defined(VGP_x86_darwin) && !defined(VGP_amd64_darwin) && \
          !defined(VGO_solaris) && !defined(VGO_freebsd)
       ksa.sa_restorer = my_sigreturn;
@@ -1228,7 +1228,7 @@ static void handle_SCSS_change ( Bool force_update )
                    == skss_old.skss_per_sig[sig].skss_flags);
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_mips32_linux) && \
             !defined(VGP_mips64_linux) && !defined(VGP_nanomips_linux) && \
-            !defined(VGP_riscv64_linux) && \
+            !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
             !defined(VGP_x86_darwin) && !defined(VGP_amd64_darwin) && \
             !defined(VGO_solaris) && !defined(VGO_freebsd)
          vg_assert(ksa_old.sa_restorer == my_sigreturn);
@@ -1348,8 +1348,8 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
       old_act->ksa_handler = scss.scss_per_sig[signo].scss_handler;
       old_act->sa_flags    = scss.scss_per_sig[signo].scss_flags;
       old_act->sa_mask     = scss.scss_per_sig[signo].scss_mask;
-#     if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-         !defined(VGO_freebsd) && !defined(VGO_solaris)
+#     if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+         !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
       old_act->sa_restorer = scss.scss_per_sig[signo].scss_restorer;
 #     endif
    }
@@ -1361,8 +1361,8 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
       scss.scss_per_sig[signo].scss_mask     = new_act->sa_mask;
 
       scss.scss_per_sig[signo].scss_restorer = NULL;
-#     if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-         !defined(VGO_freebsd) && !defined(VGO_solaris)
+#     if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+         !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
       scss.scss_per_sig[signo].scss_restorer = new_act->sa_restorer;
 #     endif
 
@@ -1721,8 +1721,8 @@ void VG_(kill_self)(Int sigNo)
 
    sa.ksa_handler = VKI_SIG_DFL;
    sa.sa_flags = 0;
-#  if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-      !defined(VGO_freebsd) && !defined(VGO_solaris)
+#  if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+      !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
    sa.sa_restorer = 0;
 #  endif
    VG_(sigemptyset)(&sa.sa_mask);
@@ -3120,8 +3120,8 @@ void pp_ksigaction ( vki_sigaction_toK_t* sa )
    VG_(printf)("pp_ksigaction: handler %p, flags 0x%x, restorer %p\n", 
                sa->ksa_handler, 
                (UInt)sa->sa_flags, 
-#              if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-                  !defined(VGO_freebsd) && !defined(VGO_solaris)
+#              if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+                  !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
                   sa->sa_restorer
 #              else
                   (void*)0
@@ -3143,8 +3143,8 @@ void VG_(set_default_handler)(Int signo)
 
    sa.ksa_handler = VKI_SIG_DFL;
    sa.sa_flags = 0;
-#  if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-      !defined(VGO_freebsd) && !defined(VGO_solaris)
+#  if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+      !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
    sa.sa_restorer = 0;
 #  endif
    VG_(sigemptyset)(&sa.sa_mask);
@@ -3265,8 +3265,8 @@ void VG_(sigstartup_actions) ( void )
 
 	 tsa.ksa_handler = (void *)sync_signalhandler;
 	 tsa.sa_flags = VKI_SA_SIGINFO;
-#        if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-            !defined(VGO_freebsd) && !defined(VGO_solaris)
+#        if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+            !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
 	 tsa.sa_restorer = 0;
 #        endif
 	 VG_(sigfillset)(&tsa.sa_mask);
@@ -3293,8 +3293,8 @@ void VG_(sigstartup_actions) ( void )
       scss.scss_per_sig[i].scss_mask     = sa.sa_mask;
 
       scss.scss_per_sig[i].scss_restorer = NULL;
-#     if !defined(VGP_riscv64_linux) && !defined(VGO_darwin) && \
-         !defined(VGO_freebsd) && !defined(VGO_solaris)
+#     if !defined(VGP_riscv64_linux) && !defined(VGP_or1k_linux) && \
+         !defined(VGO_darwin) && !defined(VGO_freebsd) && !defined(VGO_solaris)
       scss.scss_per_sig[i].scss_restorer = sa.sa_restorer;
 #     endif
 

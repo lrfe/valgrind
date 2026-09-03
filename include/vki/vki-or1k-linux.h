@@ -444,8 +444,7 @@ struct vki_old_sigaction {
 struct vki_sigaction_base {
    __vki_sighandler_t ksa_handler;
    unsigned int sa_flags;
-   vki_sigset_t sa_mask;
-   __vki_sigrestore_t sa_restorer;
+   vki_sigset_t sa_mask;   /* asm-generic: no sa_restorer */
 };
 
 // On Linux we use the same type for passing sigactions to
