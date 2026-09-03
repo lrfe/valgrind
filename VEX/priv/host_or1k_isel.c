@@ -39,6 +39,7 @@
 typedef struct {
    IRTypeEnv*   type_env;
    HReg*        vregmap;
+   HReg*        vregmapHI;   /* upper half of Ity_I64 temps */
    Int          n_vregmap;
    HInstrArray* code;
    Int          vreg_ctr;
@@ -52,6 +53,12 @@ static HReg lookupIRTemp ( ISelEnv* env, IRTemp t ) {
    vassert(t < env->n_vregmap);
    return env->vregmap[t];
 }
+static void lookupIRTemp64 ( HReg* hi, HReg* lo, ISelEnv* env, IRTemp t ) {
+   vassert(t < env->n_vregmap);
+   vassert(!hregIsInvalid(env->vregmapHI[t]));
+   *hi = env->vregmapHI[t];
+   *lo = env->vregmap[t];
+}
 static void addInstr ( ISelEnv* env, OR1KInstr* i ) {
    addHInstr(env->code, (HInstr*)i);
 }
@@ -60,6 +67,7 @@ static Bool fitsS16 ( UInt c ) { Int s = (Int)c; return s >= -32768 && s <= 3276
 static Bool fitsU16 ( UInt c ) { return c <= 0xFFFF; }
 
 static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e );
+static void iselInt64Expr ( HReg* hi, HReg* lo, ISelEnv* env, IRExpr* e );
 static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard );
 static HReg condTo01 ( ISelEnv* env, IRExpr* guard );   /* I1 -> 0/1 in a reg */
 static Bool doHelperCall ( RetLoc*, ISelEnv*, IRExpr* guard, IRCallee*,
@@ -143,6 +151,11 @@ static HReg iselIntExpr_R ( ISelEnv* env, IRExpr* e )
          switch (op) {
             case Iop_32to8: case Iop_32to16:
                return iselIntExpr_R(env, a);          /* low bits already there */
+            case Iop_64HIto32: case Iop_64to32: {
+               HReg hi, lo;
+               iselInt64Expr(&hi, &lo, env, a);
+               return op == Iop_64HIto32 ? hi : lo;
+            }
             case Iop_Not32: {
                HReg s = iselIntExpr_R(env, a);
                HReg dst = newVRegI(env);
@@ -414,6 +427,60 @@ static OR1KCondCode iselCondCode ( ISelEnv* env, IRExpr* guard )
    return OR1Kcc_F;
 }
 
+/* 64-bit values live in a (hi, lo) register pair. Only what the core and
+   the tools actually emit for a 32-bit host is supported here. */
+static void iselInt64Expr ( HReg* hi, HReg* lo, ISelEnv* env, IRExpr* e )
+{
+   vassert(typeOfIRExpr(env->type_env, e) == Ity_I64);
+   switch (e->tag) {
+      case Iex_RdTmp:
+         lookupIRTemp64(hi, lo, env, e->Iex.RdTmp.tmp);
+         return;
+      case Iex_Const: {
+         ULong v = e->Iex.Const.con->Ico.U64;
+         vassert(e->Iex.Const.con->tag == Ico_U64);
+         *hi = iselConst(env, (UInt)(v >> 32));
+         *lo = iselConst(env, (UInt)v);
+         return;
+      }
+      case Iex_Load: {
+         HReg base;
+         Short disp;
+         vassert(e->Iex.Load.ty == Ity_I64);
+         iselAddr(env, &base, &disp, e->Iex.Load.addr);
+         *hi = newVRegI(env);
+         *lo = newVRegI(env);
+         addInstr(env, OR1KInstr_Load(0x21, *hi, base, disp));      /* big-endian */
+         addInstr(env, OR1KInstr_Load(0x21, *lo, base, disp + 4));
+         return;
+      }
+      case Iex_Binop: {
+         IROp op = e->Iex.Binop.op;
+         if (op == Iop_32HLto64) {
+            *hi = iselIntExpr_R(env, e->Iex.Binop.arg1);
+            *lo = iselIntExpr_R(env, e->Iex.Binop.arg2);
+            return;
+         }
+         if (op == Iop_Add64) {
+            HReg aH, aL, bH, bL;
+            iselInt64Expr(&aH, &aL, env, e->Iex.Binop.arg1);
+            iselInt64Expr(&bH, &bL, env, e->Iex.Binop.arg2);
+            *hi = newVRegI(env);
+            *lo = newVRegI(env);
+            /* l.add sets CY, l.addc consumes it; nothing may come between. */
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_ADD,  *lo, aL, bL));
+            addInstr(env, OR1KInstr_Alu(OR1Kalu_ADDC, *hi, aH, bH));
+            return;
+         }
+         break;
+      }
+      default:
+         break;
+   }
+   ppIRExpr(e);
+   vpanic("iselInt64Expr(or1k): cannot reduce expression");
+}
+
 /* Materialize an Ity_I1 condition as a 0/1 value in a fresh register. */
 static HReg condTo01 ( ISelEnv* env, IRExpr* guard )
 {
@@ -514,6 +581,12 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
                addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, one, OR1K_ZERO));
             else
                addInstr(env, OR1KInstr_Alu(OR1Kalu_CMOV, dst, OR1K_ZERO, one));
+         } else if (typeOfIRExpr(env->type_env, data) == Ity_I64) {
+            HReg dHi, dLo, hi, lo;
+            lookupIRTemp64(&dHi, &dLo, env, stmt->Ist.WrTmp.tmp);
+            iselInt64Expr(&hi, &lo, env, data);
+            addInstr(env, (OR1KInstr*)genMove_OR1K(hi, dHi, False));
+            addInstr(env, (OR1KInstr*)genMove_OR1K(lo, dLo, False));
          } else {
             HReg r = iselIntExpr_R(env, data);
             addInstr(env, (OR1KInstr*)genMove_OR1K(r, dst, False));
@@ -530,6 +603,14 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
             case Ity_I8:  opc = 0x36; break;   /* l.sb */
             case Ity_I16: opc = 0x37; break;   /* l.sh */
             case Ity_I32: opc = 0x35; break;   /* l.sw */
+            case Ity_I64: {
+               HReg hi, lo;
+               iselInt64Expr(&hi, &lo, env, stmt->Ist.Store.data);
+               iselAddr(env, &base, &disp, stmt->Ist.Store.addr);
+               addInstr(env, OR1KInstr_Store(0x35, base, hi, disp));
+               addInstr(env, OR1KInstr_Store(0x35, base, lo, disp + 4));
+               return;
+            }
             default: vpanic("iselStmt(or1k): bad store type");
          }
          iselAddr(env, &base, &disp, stmt->Ist.Store.addr);
@@ -610,8 +691,13 @@ HInstrArray* iselSB_OR1K ( const IRSB* bb,
    env.chainingAllowed = chaining;
    env.n_vregmap = bb->tyenv->types_used;
    env.vregmap   = LibVEX_Alloc_inline(env.n_vregmap * sizeof(HReg));
-   for (i = 0; i < env.n_vregmap; i++)
-      env.vregmap[i] = mkHReg(True, HRcInt32, 0, env.vreg_ctr++);
+   env.vregmapHI = LibVEX_Alloc_inline(env.n_vregmap * sizeof(HReg));
+   for (i = 0; i < env.n_vregmap; i++) {
+      env.vregmap[i]   = mkHReg(True, HRcInt32, 0, env.vreg_ctr++);
+      env.vregmapHI[i] = INVALID_HREG;
+      if (bb->tyenv->types[i] == Ity_I64)
+         env.vregmapHI[i] = mkHReg(True, HRcInt32, 0, env.vreg_ctr++);
+   }
 
    /* Every superblock opens with a dispatch-counter check. */
    addInstr(&env, OR1KInstr_EvCheck(offs_evc_counter, offs_evc_fa));
