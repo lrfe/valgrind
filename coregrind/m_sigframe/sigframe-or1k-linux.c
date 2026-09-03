@@ -143,6 +143,10 @@ void VG_(sigframe_destroy) ( ThreadId tid, Bool isRT )
       (&tst->arch.vex.guest_r0)[i] = sc->regs.gpr[i];
    tst->arch.vex.guest_PC = sc->regs.pc;
 
+   /* the handler ran with the signal blocked; restore the caller's mask. */
+   tst->sig_mask     = frame->rs_uc.uc_sigmask;
+   tst->tmp_sig_mask = tst->sig_mask;
+
    tst->arch.vex_shadow1 = priv->vex_shadow1;
    tst->arch.vex_shadow2 = priv->vex_shadow2;
 
